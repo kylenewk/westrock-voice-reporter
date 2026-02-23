@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "WestRock Voice Reporter",
+    "slug": "westrock-voice-reporter",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "westrock-reporter",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.westrockcoffee.voicereporter",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Voice Reporter uses speech recognition to transcribe your call reports.",
+        "NSMicrophoneUsageDescription": "Voice Reporter needs microphone access to listen to your verbal reports."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.westrockcoffee.voicereporter"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Voice Reporter needs microphone access to listen to your verbal reports.",
+          "speechRecognitionPermission": "Voice Reporter uses speech recognition to transcribe your call reports."
+        }
+      ]
+    ]
+  }
+}

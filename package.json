@@ -1,0 +1,8 @@
+{
+  "name": "westrock-voice-reporter",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/mobile"
+  ]
+}
