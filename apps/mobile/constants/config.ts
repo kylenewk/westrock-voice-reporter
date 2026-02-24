@@ -1,8 +1,8 @@
-// Uses EXPO_PUBLIC_API_URL env var for production builds.
-// In development, defaults to localhost.
+// In development, points to local server.
+// In production, uses EXPO_PUBLIC_API_URL env var or the Render deployment.
 export const API_BASE_URL = __DEV__
   ? "http://localhost:3001"
-  : process.env.EXPO_PUBLIC_API_URL || "http://localhost:3001";
+  : process.env.EXPO_PUBLIC_API_URL || "https://westrock-voice-reporter.onrender.com";
 
 export const COLORS = {
   primary: "#1a1a2e",
