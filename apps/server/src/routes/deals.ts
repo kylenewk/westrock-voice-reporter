@@ -46,7 +46,7 @@ const MOCK_DEALS: DealSearchResult = {
   ],
 };
 
-function getMockDeal(dealId: string): DealDetail {
+export function getMockDealDetail(dealId: string): DealDetail {
   const deal = MOCK_DEALS.deals.find((d) => d.id === dealId);
   return {
     deal: {
@@ -84,7 +84,7 @@ function getMockDeal(dealId: string): DealDetail {
   };
 }
 
-const hubspotEnabled = !!config.hubspot.accessToken;
+export const hubspotEnabled = !!config.hubspot.accessToken;
 
 export async function dealsRoutes(app: FastifyInstance) {
   // Search deals
@@ -115,7 +115,7 @@ export async function dealsRoutes(app: FastifyInstance) {
   // Get deal detail
   app.get<{ Params: { id: string } }>("/api/deals/:id", async (request, reply) => {
     if (!hubspotEnabled) {
-      return getMockDeal(request.params.id);
+      return getMockDealDetail(request.params.id);
     }
 
     const detail = await getDeal(request.params.id);
