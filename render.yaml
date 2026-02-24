@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: westrock-voice-reporter
+    runtime: docker
+    rootDir: apps/server
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: HUBSPOT_ACCESS_TOKEN
+        sync: false
+      - key: HUBSPOT_OWNER_ID
+        value: "211824246"
+      - key: HUBSPOT_PORTAL_ID
+        value: "4936417"
+      - key: REDIS_URL
+        fromService:
+          name: westrock-redis
+          type: redis
+          property: connectionString
+
+  - type: redis
+    name: westrock-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []

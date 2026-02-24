@@ -1,8 +1,8 @@
-// In development, point to your local server
-// In production, replace with your deployed server URL
+// Uses EXPO_PUBLIC_API_URL env var for production builds.
+// In development, defaults to localhost.
 export const API_BASE_URL = __DEV__
   ? "http://localhost:3001"
-  : "https://your-server.example.com";
+  : process.env.EXPO_PUBLIC_API_URL || "http://localhost:3001";
 
 export const COLORS = {
   primary: "#1a1a2e",

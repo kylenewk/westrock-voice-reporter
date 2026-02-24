@@ -13,6 +13,10 @@ export const config = {
     portalId: process.env.HUBSPOT_PORTAL_ID || "4936417",
   },
 
+  redis: {
+    url: process.env.REDIS_URL || "",
+  },
+
   session: {
     ttlMs: 30 * 60 * 1000, // 30 minutes
   },

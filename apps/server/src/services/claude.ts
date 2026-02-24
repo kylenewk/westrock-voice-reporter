@@ -4,24 +4,13 @@ import { InterviewSession, DealContext, InterviewMessage } from "../types/interv
 import { StructuredReport } from "../types/report.js";
 import { buildInterviewerPrompt, buildGreeting } from "../prompts/interviewer.js";
 import { buildReportGeneratorPrompt } from "../prompts/reportGenerator.js";
+import { createSessionStore, SessionStore } from "./sessionStore.js";
 import { v4 as uuidv4 } from "uuid";
 
 const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+const store: SessionStore = createSessionStore();
 
-// In-memory session store (upgrade to Redis for production)
-const sessions = new Map<string, InterviewSession>();
-
-// Clean up expired sessions periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of sessions) {
-    if (now - new Date(session.createdAt).getTime() > config.session.ttlMs) {
-      sessions.delete(id);
-    }
-  }
-}, 60_000);
-
-export function startSession(dealId: string, dealContext: DealContext): InterviewSession {
+export async function startSession(dealId: string, dealContext: DealContext): Promise<InterviewSession> {
   const session: InterviewSession = {
     id: uuidv4(),
     dealId,
@@ -30,21 +19,22 @@ export function startSession(dealId: string, dealContext: DealContext): Intervie
     createdAt: new Date().toISOString(),
     completed: false,
   };
-  sessions.set(session.id, session);
+  await store.set(session.id, session);
   return session;
 }
 
-export function getSession(sessionId: string): InterviewSession | undefined {
-  return sessions.get(sessionId);
+export async function getSession(sessionId: string): Promise<InterviewSession | undefined> {
+  return store.get(sessionId);
 }
 
-export function getGreeting(session: InterviewSession): string {
+export async function getGreeting(session: InterviewSession): Promise<string> {
   const greeting = buildGreeting(session.dealContext);
   session.messages.push({
     role: "assistant",
     content: greeting,
     timestamp: new Date().toISOString(),
   });
+  await store.set(session.id, session);
   return greeting;
 }
 
@@ -52,7 +42,7 @@ export async function sendMessage(
   sessionId: string,
   userTranscript: string
 ): Promise<{ response: string; interviewComplete: boolean }> {
-  const session = sessions.get(sessionId);
+  const session = await store.get(sessionId);
   if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }
@@ -101,6 +91,8 @@ export async function sendMessage(
     session.completed = true;
   }
 
+  await store.set(sessionId, session);
+
   return { response: assistantText, interviewComplete };
 }
 
@@ -108,7 +100,7 @@ export async function* streamMessage(
   sessionId: string,
   userTranscript: string
 ): AsyncGenerator<{ type: "token" | "done"; content: string; interviewComplete?: boolean }> {
-  const session = sessions.get(sessionId);
+  const session = await store.get(sessionId);
   if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }
@@ -164,11 +156,13 @@ export async function* streamMessage(
     session.completed = true;
   }
 
+  await store.set(sessionId, session);
+
   yield { type: "done", content: fullResponse, interviewComplete };
 }
 
 export async function generateReport(sessionId: string): Promise<StructuredReport> {
-  const session = sessions.get(sessionId);
+  const session = await store.get(sessionId);
   if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }
@@ -211,8 +205,8 @@ export async function generateReport(sessionId: string): Promise<StructuredRepor
   return report;
 }
 
-export function getTranscript(sessionId: string): InterviewMessage[] {
-  const session = sessions.get(sessionId);
+export async function getTranscript(sessionId: string): Promise<InterviewMessage[]> {
+  const session = await store.get(sessionId);
   if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }

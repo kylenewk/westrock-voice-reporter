@@ -21,8 +21,8 @@ export async function interviewRoutes(app: FastifyInstance) {
     const dealContext = buildDealContext(dealDetail);
 
     // Create session
-    const session = startSession(dealId, dealContext);
-    const greeting = getGreeting(session);
+    const session = await startSession(dealId, dealContext);
+    const greeting = await getGreeting(session);
 
     return {
       sessionId: session.id,
@@ -73,12 +73,12 @@ export async function interviewRoutes(app: FastifyInstance) {
     Body: { sessionId: string };
   }>("/api/interview/end", async (request, reply) => {
     const { sessionId } = request.body;
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session) {
       reply.code(404);
       return { error: "Session not found" };
     }
     session.completed = true;
-    return { transcript: getTranscript(sessionId) };
+    return { transcript: await getTranscript(sessionId) };
   });
 }
