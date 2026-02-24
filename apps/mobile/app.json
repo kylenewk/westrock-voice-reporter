@@ -7,7 +7,7 @@
     "scheme": "westrock-reporter",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -39,7 +39,8 @@
           "microphonePermission": "Voice Reporter needs microphone access to listen to your verbal reports.",
           "speechRecognitionPermission": "Voice Reporter uses speech recognition to transcribe your call reports."
         }
-      ]
+      ],
+      "./plugins/fix-folly-coroutines"
     ]
   }
 }
