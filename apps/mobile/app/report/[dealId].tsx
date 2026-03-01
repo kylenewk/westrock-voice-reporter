@@ -10,23 +10,22 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { COLORS } from "../../constants/config";
 import { ReportView } from "../../components/ReportView";
-import { useInterview } from "../../hooks/useInterview";
 import * as api from "../../services/api";
 import type { StructuredReport, UploadResult } from "../../types";
 
 export default function ReportScreen() {
-  const { dealId } = useLocalSearchParams<{ dealId: string }>();
+  const { dealId, sessionId } = useLocalSearchParams<{
+    dealId: string;
+    sessionId?: string;
+  }>();
   const router = useRouter();
-  const { report: interviewReport, sessionId } = useInterview();
 
-  const [report, setReport] = useState<StructuredReport | null>(
-    interviewReport
-  );
+  const [report, setReport] = useState<StructuredReport | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // If we don't have a report from interview context, try generating one
+  // Generate report if we don't have one yet
   useEffect(() => {
     if (!report && sessionId) {
       api

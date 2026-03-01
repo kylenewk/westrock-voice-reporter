@@ -1,31 +1,31 @@
 import type { StructuredReport } from "../types/report.js";
 
 export function formatReportHtml(report: StructuredReport): string {
-  const attendeeRows = report.attendees
+  const attendeeRows = (report.attendees || [])
     .map((a) => `<li>${esc(a.name)} — ${esc(a.title)}, ${esc(a.company)}</li>`)
     .join("\n    ");
 
-  const topics = report.topicsDiscussed
+  const topics = (report.topicsDiscussed || [])
     .map((t) => `<li>${esc(t)}</li>`)
     .join("\n    ");
 
-  const insights = report.keyInsights
+  const insights = (report.keyInsights || [])
     .map((i) => `<li>${esc(i)}</li>`)
     .join("\n    ");
 
-  const actionRows = report.actionItems
+  const actionRows = (report.actionItems || [])
     .map(
       (a) =>
         `<tr><td>${esc(a.action)}</td><td>${esc(a.owner)}</td><td>${a.dueDate || "TBD"}</td></tr>`
     )
     .join("\n    ");
 
-  const nextStepsHtml = report.nextSteps
+  const nextStepsHtml = (report.nextSteps || [])
     .map((n) => `<li>${esc(n.step)} (${esc(n.timeline)})</li>`)
     .join("\n    ");
 
   const competitorHtml =
-    report.competitorMentions.length > 0
+    report.competitorMentions && report.competitorMentions.length > 0
       ? `<h3>Competitor Intelligence</h3>
   <ul>
     ${report.competitorMentions
@@ -80,9 +80,9 @@ ${pricingHtml}
 
 ${volumeHtml}
 
-<h3>Deal Stage Assessment</h3>
+${report.dealStageRecommendation ? `<h3>Deal Stage Assessment</h3>
 <p>Current: <strong>${esc(report.dealStageRecommendation.currentStage)}</strong> → Recommended: <strong>${esc(report.dealStageRecommendation.recommendedStage)}</strong></p>
-<p><em>${esc(report.dealStageRecommendation.rationale)}</em></p>
+<p><em>${esc(report.dealStageRecommendation.rationale)}</em></p>` : ""}
 
 ${report.followUpDate ? `<p><strong>Follow-up Date:</strong> ${esc(report.followUpDate)}</p>` : ""}
 
@@ -93,50 +93,51 @@ ${report.followUpDate ? `<p><strong>Follow-up Date:</strong> ${esc(report.follow
 export function formatReportPlainText(report: StructuredReport): string {
   const lines: string[] = [];
 
-  lines.push(`SALES CALL REPORT — ${report.callDate} (${report.callType})`);
+  lines.push(`SALES CALL REPORT — ${safe(report.callDate)} (${safe(report.callType)})`);
   lines.push("");
   lines.push("ATTENDEES:");
-  for (const a of report.attendees) {
-    lines.push(`  - ${a.name}, ${a.title} (${a.company})`);
+  for (const a of (report.attendees || [])) {
+    lines.push(`  - ${safe(a.name)}, ${safe(a.title)} (${safe(a.company)})`);
   }
   lines.push("");
   lines.push("SUMMARY:");
-  lines.push(`  ${report.summary}`);
+  lines.push(`  ${safe(report.summary)}`);
   lines.push("");
   lines.push("TOPICS DISCUSSED:");
-  for (const t of report.topicsDiscussed) {
-    lines.push(`  - ${t}`);
+  for (const t of (report.topicsDiscussed || [])) {
+    lines.push(`  - ${safe(t)}`);
   }
   lines.push("");
   lines.push("KEY INSIGHTS:");
-  for (const i of report.keyInsights) {
-    lines.push(`  - ${i}`);
+  for (const i of (report.keyInsights || [])) {
+    lines.push(`  - ${safe(i)}`);
   }
   lines.push("");
   lines.push("ACTION ITEMS:");
-  for (const a of report.actionItems) {
-    lines.push(`  - ${a.action} (Owner: ${a.owner}, Due: ${a.dueDate || "TBD"})`);
+  for (const a of (report.actionItems || [])) {
+    lines.push(`  - ${safe(a.action)} (Owner: ${safe(a.owner)}, Due: ${a.dueDate || "TBD"})`);
   }
   lines.push("");
   lines.push("NEXT STEPS:");
-  for (const n of report.nextSteps) {
-    lines.push(`  - ${n.step} (${n.timeline})`);
+  for (const n of (report.nextSteps || [])) {
+    lines.push(`  - ${safe(n.step)} (${safe(n.timeline)})`);
   }
 
-  if (report.competitorMentions.length > 0) {
+  if (report.competitorMentions && report.competitorMentions.length > 0) {
     lines.push("");
     lines.push("COMPETITOR INTEL:");
     for (const c of report.competitorMentions) {
-      lines.push(`  - ${c.competitor}: ${c.context}`);
+      lines.push(`  - ${safe(c.competitor)}: ${safe(c.context)}`);
     }
   }
 
   lines.push("");
-  lines.push(`CUSTOMER SENTIMENT: ${report.customerSentiment}`);
-  lines.push(
-    `DEAL STAGE: ${report.dealStageRecommendation.currentStage} → ${report.dealStageRecommendation.recommendedStage}`
-  );
-  lines.push(`  Rationale: ${report.dealStageRecommendation.rationale}`);
+  lines.push(`CUSTOMER SENTIMENT: ${safe(report.customerSentiment)}`);
+  const dsr = report.dealStageRecommendation;
+  if (dsr) {
+    lines.push(`DEAL STAGE: ${safe(dsr.currentStage)} → ${safe(dsr.recommendedStage)}`);
+    lines.push(`  Rationale: ${safe(dsr.rationale)}`);
+  }
 
   if (report.followUpDate) {
     lines.push(`FOLLOW-UP: ${report.followUpDate}`);
@@ -145,10 +146,17 @@ export function formatReportPlainText(report: StructuredReport): string {
   return lines.join("\n");
 }
 
-function esc(text: string): string {
+function esc(text: string | null | undefined): string {
+  if (!text) return "";
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Safely convert any value to a string (guards against null/undefined from AI output) */
+function safe(val: unknown): string {
+  if (val == null) return "";
+  return String(val);
 }

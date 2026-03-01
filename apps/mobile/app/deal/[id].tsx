@@ -117,7 +117,7 @@ export default function DealDetailScreen() {
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.startButton}
-          onPress={() => router.push(`/interview/${id}`)}
+          onPress={() => router.push({ pathname: "/interview/[dealId]", params: { dealId: id } } as any)}
           activeOpacity={0.8}
         >
           <Text style={styles.startButtonText}>Start Call Report</Text>

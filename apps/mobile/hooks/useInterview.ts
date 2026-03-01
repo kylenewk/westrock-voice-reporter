@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useVoiceRecognition } from "./useVoiceRecognition";
 import { useTextToSpeech } from "./useTextToSpeech";
 import * as api from "../services/api";
@@ -54,7 +54,7 @@ export function useInterview(): UseInterviewReturn {
     await voice.startListening();
   }, [voice]);
 
-  // Called when user taps "Done talking" or silence detected
+  // Called when silence detected or user taps "Done"
   const finishSpeaking = useCallback(async () => {
     if (processingRef.current) return;
     processingRef.current = true;
@@ -84,7 +84,20 @@ export function useInterview(): UseInterviewReturn {
       addMessage("assistant", result.response);
 
       if (result.interviewComplete) {
+        // Speak the AI's final response, then auto-generate the report
+        setState("responding");
+        await tts.speak(result.response);
         setState("summarizing");
+        // Auto-generate report
+        if (sessionIdRef.current) {
+          try {
+            const reportResult = await api.generateReport(sessionIdRef.current);
+            setReport(reportResult.report);
+            setState("complete");
+          } catch (reportErr: any) {
+            setError(reportErr.message || "Failed to generate report");
+          }
+        }
       } else {
         // Speak the response, then start listening again
         setState("responding");
@@ -98,6 +111,18 @@ export function useInterview(): UseInterviewReturn {
       processingRef.current = false;
     }
   }, [voice, tts, addMessage, startListeningPhase]);
+
+  // Wire up silence detection to auto-submit
+  useEffect(() => {
+    voice.onSilenceDetected.current = () => {
+      if (state === "listening" && voice.transcript.trim().length > 0) {
+        finishSpeaking();
+      }
+    };
+    return () => {
+      voice.onSilenceDetected.current = null;
+    };
+  }, [voice, state, finishSpeaking]);
 
   const startInterview = useCallback(
     async (dealId: string) => {

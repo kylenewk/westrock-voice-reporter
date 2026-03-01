@@ -24,6 +24,7 @@ export default function InterviewScreen() {
     messages,
     currentTranscript,
     error,
+    sessionId,
     startInterview,
     finishSpeaking,
     endInterview,
@@ -49,15 +50,9 @@ export default function InterviewScreen() {
   // Navigate to report when complete
   useEffect(() => {
     if (state === "complete") {
-      router.replace(`/report/${dealId}`);
+      router.replace({ pathname: "/report/[dealId]", params: { dealId, sessionId: sessionId || "" } } as any);
     }
   }, [state]);
-
-  const handleDone = () => {
-    if (state === "listening" && currentTranscript.trim()) {
-      finishSpeaking();
-    }
-  };
 
   const handleEnd = () => {
     Alert.alert(
@@ -113,8 +108,8 @@ export default function InterviewScreen() {
         ListHeaderComponent={
           <View style={styles.transcriptHeader}>
             <Text style={styles.transcriptHint}>
-              Speak naturally about your call. Tap "Done" when you finish a
-              thought.
+              Speak naturally about your call. I'll listen and move on
+              when you pause.
             </Text>
           </View>
         }
@@ -136,15 +131,6 @@ export default function InterviewScreen() {
         <VoiceOrb state={state} />
 
         <View style={styles.buttonRow}>
-          {state === "listening" && (
-            <TouchableOpacity
-              style={styles.doneButton}
-              onPress={handleDone}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.doneButtonText}>Done</Text>
-            </TouchableOpacity>
-          )}
           {(state === "listening" || state === "responding") && (
             <TouchableOpacity
               style={styles.endButton}
@@ -217,17 +203,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginTop: 20,
-  },
-  doneButton: {
-    backgroundColor: COLORS.success,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  doneButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
   },
   endButton: {
     backgroundColor: "rgba(255,255,255,0.15)",
