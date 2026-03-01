@@ -63,7 +63,7 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       Speech.speak(text, {
         language: "en-US",
         voice: selectedVoice.current,
-        rate: 0.93,
+        rate: 1.1,
         pitch: 1.05,
         onDone: () => {
           setIsSpeaking(false);

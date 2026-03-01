@@ -55,25 +55,43 @@ export interface InterviewMessage {
   timestamp: string;
 }
 
+export interface ProductDiscussed {
+  category: string;
+  details: string;
+  sampleStatus: "not discussed" | "requested" | "sent" | "under review" | "approved" | "rejected";
+  customFormulation: boolean;
+}
+
+export interface DecisionProcess {
+  decisionMaker: string | null;
+  evaluationCriteria: string[];
+  decisionTimeline: string | null;
+  otherStakeholders: string[];
+}
+
 export interface StructuredReport {
   callDate: string;
   callType: "phone" | "in-person" | "video";
   attendees: { name: string; title: string; company: string }[];
   summary: string;
+  productsDiscussed: ProductDiscussed[];
   topicsDiscussed: string[];
   keyInsights: string[];
   actionItems: { action: string; owner: string; dueDate: string | null }[];
   nextSteps: { step: string; timeline: string }[];
   competitorMentions: { competitor: string; context: string }[];
+  decisionProcess: DecisionProcess | null;
   dealStageRecommendation: {
     currentStage: string;
     recommendedStage: string;
     rationale: string;
   };
   customerSentiment: "positive" | "neutral" | "negative" | "mixed";
+  riskFactors: string[];
   followUpDate: string | null;
   pricingNotes: string | null;
   volumeNotes: string | null;
+  businessType: "new" | "competitive switch" | "expansion" | "renewal" | "not discussed";
 }
 
 export interface UploadResult {

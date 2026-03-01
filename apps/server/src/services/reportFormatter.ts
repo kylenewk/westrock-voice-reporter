@@ -5,6 +5,19 @@ export function formatReportHtml(report: StructuredReport): string {
     .map((a) => `<li>${esc(a.name)} — ${esc(a.title)}, ${esc(a.company)}</li>`)
     .join("\n    ");
 
+  const productsHtml = (report.productsDiscussed || []).length > 0
+    ? `<h3>Products Discussed</h3>
+  <table border="1" cellpadding="4" cellspacing="0">
+    <tr><th>Category</th><th>Details</th><th>Samples</th><th>Custom</th></tr>
+    ${(report.productsDiscussed || [])
+      .map(
+        (p) =>
+          `<tr><td>${esc(p.category)}</td><td>${esc(p.details)}</td><td>${esc(p.sampleStatus)}</td><td>${p.customFormulation ? "Yes" : "No"}</td></tr>`
+      )
+      .join("\n    ")}
+  </table>`
+    : "";
+
   const topics = (report.topicsDiscussed || [])
     .map((t) => `<li>${esc(t)}</li>`)
     .join("\n    ");
@@ -34,6 +47,23 @@ export function formatReportHtml(report: StructuredReport): string {
   </ul>`
       : "";
 
+  const decisionHtml = report.decisionProcess
+    ? `<h3>Decision Process</h3>
+  <ul>
+    ${report.decisionProcess.decisionMaker ? `<li><strong>Decision Maker:</strong> ${esc(report.decisionProcess.decisionMaker)}</li>` : ""}
+    ${report.decisionProcess.decisionTimeline ? `<li><strong>Timeline:</strong> ${esc(report.decisionProcess.decisionTimeline)}</li>` : ""}
+    ${(report.decisionProcess.evaluationCriteria || []).length > 0 ? `<li><strong>Evaluation Criteria:</strong> ${(report.decisionProcess.evaluationCriteria).map(esc).join(", ")}</li>` : ""}
+    ${(report.decisionProcess.otherStakeholders || []).length > 0 ? `<li><strong>Other Stakeholders:</strong> ${(report.decisionProcess.otherStakeholders).map(esc).join(", ")}</li>` : ""}
+  </ul>`
+    : "";
+
+  const riskHtml = (report.riskFactors || []).length > 0
+    ? `<h3>⚠ Risk Factors</h3>
+  <ul>
+    ${(report.riskFactors || []).map((r) => `<li>${esc(r)}</li>`).join("\n    ")}
+  </ul>`
+    : "";
+
   const pricingHtml = report.pricingNotes
     ? `<h3>Pricing Notes</h3><p>${esc(report.pricingNotes)}</p>`
     : "";
@@ -42,8 +72,12 @@ export function formatReportHtml(report: StructuredReport): string {
     ? `<h3>Volume Notes</h3><p>${esc(report.volumeNotes)}</p>`
     : "";
 
+  const businessTypeLabel = report.businessType && report.businessType !== "not discussed"
+    ? ` | <strong>Type:</strong> ${esc(report.businessType)}`
+    : "";
+
   return `<h2>Sales Call Report</h2>
-<p><strong>Date:</strong> ${esc(report.callDate)} | <strong>Type:</strong> ${esc(report.callType)} | <strong>Sentiment:</strong> ${esc(report.customerSentiment)}</p>
+<p><strong>Date:</strong> ${esc(report.callDate)} | <strong>Type:</strong> ${esc(report.callType)} | <strong>Sentiment:</strong> ${esc(report.customerSentiment)}${businessTypeLabel}</p>
 
 <h3>Attendees</h3>
 <ul>
@@ -52,6 +86,8 @@ export function formatReportHtml(report: StructuredReport): string {
 
 <h3>Summary</h3>
 <p>${esc(report.summary)}</p>
+
+${productsHtml}
 
 <h3>Topics Discussed</h3>
 <ul>
@@ -76,6 +112,10 @@ export function formatReportHtml(report: StructuredReport): string {
 
 ${competitorHtml}
 
+${decisionHtml}
+
+${riskHtml}
+
 ${pricingHtml}
 
 ${volumeHtml}
@@ -94,6 +134,9 @@ export function formatReportPlainText(report: StructuredReport): string {
   const lines: string[] = [];
 
   lines.push(`SALES CALL REPORT — ${safe(report.callDate)} (${safe(report.callType)})`);
+  if (report.businessType && report.businessType !== "not discussed") {
+    lines.push(`Business Type: ${safe(report.businessType)}`);
+  }
   lines.push("");
   lines.push("ATTENDEES:");
   for (const a of (report.attendees || [])) {
@@ -102,6 +145,16 @@ export function formatReportPlainText(report: StructuredReport): string {
   lines.push("");
   lines.push("SUMMARY:");
   lines.push(`  ${safe(report.summary)}`);
+
+  if ((report.productsDiscussed || []).length > 0) {
+    lines.push("");
+    lines.push("PRODUCTS DISCUSSED:");
+    for (const p of report.productsDiscussed) {
+      lines.push(`  - ${safe(p.category)}: ${safe(p.details)}`);
+      lines.push(`    Samples: ${safe(p.sampleStatus)} | Custom Formulation: ${p.customFormulation ? "Yes" : "No"}`);
+    }
+  }
+
   lines.push("");
   lines.push("TOPICS DISCUSSED:");
   for (const t of (report.topicsDiscussed || [])) {
@@ -131,12 +184,45 @@ export function formatReportPlainText(report: StructuredReport): string {
     }
   }
 
+  if (report.decisionProcess) {
+    lines.push("");
+    lines.push("DECISION PROCESS:");
+    if (report.decisionProcess.decisionMaker) {
+      lines.push(`  Decision Maker: ${safe(report.decisionProcess.decisionMaker)}`);
+    }
+    if (report.decisionProcess.decisionTimeline) {
+      lines.push(`  Timeline: ${safe(report.decisionProcess.decisionTimeline)}`);
+    }
+    if ((report.decisionProcess.evaluationCriteria || []).length > 0) {
+      lines.push(`  Criteria: ${report.decisionProcess.evaluationCriteria.map(safe).join(", ")}`);
+    }
+    if ((report.decisionProcess.otherStakeholders || []).length > 0) {
+      lines.push(`  Other Stakeholders: ${report.decisionProcess.otherStakeholders.map(safe).join(", ")}`);
+    }
+  }
+
+  if ((report.riskFactors || []).length > 0) {
+    lines.push("");
+    lines.push("RISK FACTORS:");
+    for (const r of report.riskFactors) {
+      lines.push(`  ⚠ ${safe(r)}`);
+    }
+  }
+
   lines.push("");
   lines.push(`CUSTOMER SENTIMENT: ${safe(report.customerSentiment)}`);
   const dsr = report.dealStageRecommendation;
   if (dsr) {
     lines.push(`DEAL STAGE: ${safe(dsr.currentStage)} → ${safe(dsr.recommendedStage)}`);
     lines.push(`  Rationale: ${safe(dsr.rationale)}`);
+  }
+
+  if (report.pricingNotes) {
+    lines.push("");
+    lines.push(`PRICING: ${report.pricingNotes}`);
+  }
+  if (report.volumeNotes) {
+    lines.push(`VOLUME: ${report.volumeNotes}`);
   }
 
   if (report.followUpDate) {

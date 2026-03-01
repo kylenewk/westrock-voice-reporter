@@ -26,6 +26,15 @@ const sentimentColors: Record<string, string> = {
   mixed: COLORS.warning,
 };
 
+const sampleStatusColors: Record<string, string> = {
+  approved: COLORS.success,
+  rejected: COLORS.error,
+  "under review": COLORS.warning,
+  sent: COLORS.accent,
+  requested: COLORS.listening,
+  "not discussed": COLORS.textSecondary,
+};
+
 export function ReportView({ report }: ReportViewProps) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -38,6 +47,9 @@ export function ReportView({ report }: ReportViewProps) {
             text={report.customerSentiment}
             color={sentimentColors[report.customerSentiment] ?? COLORS.textSecondary}
           />
+          {report.businessType && report.businessType !== "not discussed" && (
+            <Badge text={report.businessType} color={COLORS.primary} />
+          )}
           {report.callDate ? (
             <Text style={styles.date}>{report.callDate}</Text>
           ) : null}
@@ -51,7 +63,7 @@ export function ReportView({ report }: ReportViewProps) {
       </View>
 
       {/* Attendees */}
-      {report.attendees.length > 0 && (
+      {(report.attendees || []).length > 0 && (
         <View style={styles.section}>
           <SectionHeader title="Attendees" />
           {report.attendees.map((a, i) => (
@@ -66,8 +78,32 @@ export function ReportView({ report }: ReportViewProps) {
         </View>
       )}
 
+      {/* Products Discussed */}
+      {(report.productsDiscussed || []).length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader title="Products Discussed" />
+          {report.productsDiscussed.map((p, i) => (
+            <View key={i} style={styles.productCard}>
+              <View style={styles.productHeader}>
+                <Text style={styles.productCategory}>{p.category}</Text>
+                {p.sampleStatus && p.sampleStatus !== "not discussed" && (
+                  <Badge
+                    text={p.sampleStatus}
+                    color={sampleStatusColors[p.sampleStatus] ?? COLORS.textSecondary}
+                  />
+                )}
+              </View>
+              <Text style={styles.productDetails}>{p.details}</Text>
+              {p.customFormulation && (
+                <Text style={styles.customLabel}>Custom Formulation</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Topics Discussed */}
-      {report.topicsDiscussed.length > 0 && (
+      {(report.topicsDiscussed || []).length > 0 && (
         <View style={styles.section}>
           <SectionHeader title="Topics Discussed" />
           {report.topicsDiscussed.map((t, i) => (
@@ -80,7 +116,7 @@ export function ReportView({ report }: ReportViewProps) {
       )}
 
       {/* Key Insights */}
-      {report.keyInsights.length > 0 && (
+      {(report.keyInsights || []).length > 0 && (
         <View style={styles.section}>
           <SectionHeader title="Key Insights" />
           {report.keyInsights.map((ins, i) => (
@@ -92,7 +128,7 @@ export function ReportView({ report }: ReportViewProps) {
       )}
 
       {/* Action Items */}
-      {report.actionItems.length > 0 && (
+      {(report.actionItems || []).length > 0 && (
         <View style={styles.section}>
           <SectionHeader title="Action Items" />
           {report.actionItems.map((ai, i) => (
@@ -113,7 +149,7 @@ export function ReportView({ report }: ReportViewProps) {
       )}
 
       {/* Next Steps */}
-      {report.nextSteps.length > 0 && (
+      {(report.nextSteps || []).length > 0 && (
         <View style={styles.section}>
           <SectionHeader title="Next Steps" />
           {report.nextSteps.map((ns, i) => (
@@ -126,13 +162,66 @@ export function ReportView({ report }: ReportViewProps) {
       )}
 
       {/* Competitor Mentions */}
-      {report.competitorMentions.length > 0 && (
+      {(report.competitorMentions || []).length > 0 && (
         <View style={styles.section}>
-          <SectionHeader title="Competitor Mentions" />
+          <SectionHeader title="Competitor Intelligence" />
           {report.competitorMentions.map((cm, i) => (
             <View key={i} style={styles.listItem}>
               <Text style={styles.listItemTitle}>{cm.competitor}</Text>
               <Text style={styles.listItemSub}>{cm.context}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Decision Process */}
+      {report.decisionProcess && (
+        <View style={styles.section}>
+          <SectionHeader title="Decision Process" />
+          <View style={styles.decisionCard}>
+            {report.decisionProcess.decisionMaker && (
+              <View style={styles.decisionRow}>
+                <Text style={styles.decisionLabel}>Decision Maker</Text>
+                <Text style={styles.decisionValue}>
+                  {report.decisionProcess.decisionMaker}
+                </Text>
+              </View>
+            )}
+            {report.decisionProcess.decisionTimeline && (
+              <View style={styles.decisionRow}>
+                <Text style={styles.decisionLabel}>Timeline</Text>
+                <Text style={styles.decisionValue}>
+                  {report.decisionProcess.decisionTimeline}
+                </Text>
+              </View>
+            )}
+            {(report.decisionProcess.evaluationCriteria || []).length > 0 && (
+              <View style={styles.decisionRow}>
+                <Text style={styles.decisionLabel}>Criteria</Text>
+                <Text style={styles.decisionValue}>
+                  {report.decisionProcess.evaluationCriteria.join(", ")}
+                </Text>
+              </View>
+            )}
+            {(report.decisionProcess.otherStakeholders || []).length > 0 && (
+              <View style={styles.decisionRow}>
+                <Text style={styles.decisionLabel}>Stakeholders</Text>
+                <Text style={styles.decisionValue}>
+                  {report.decisionProcess.otherStakeholders.join(", ")}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Risk Factors */}
+      {(report.riskFactors || []).length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader title="⚠ Risk Factors" />
+          {report.riskFactors.map((risk, i) => (
+            <View key={i} style={styles.riskCard}>
+              <Text style={styles.riskText}>{risk}</Text>
             </View>
           ))}
         </View>
@@ -210,6 +299,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flexWrap: "wrap",
   },
   date: {
     fontSize: 13,
@@ -288,6 +378,77 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: COLORS.text,
   },
+  // Products
+  productCard: {
+    backgroundColor: COLORS.surface,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  productHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  productCategory: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  productDetails: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.text,
+    marginTop: 4,
+  },
+  customLabel: {
+    fontSize: 12,
+    color: COLORS.accent,
+    fontWeight: "600",
+    marginTop: 6,
+    fontStyle: "italic",
+  },
+  // Decision Process
+  decisionCard: {
+    backgroundColor: COLORS.surface,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  decisionRow: {
+    marginBottom: 8,
+  },
+  decisionLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  decisionValue: {
+    fontSize: 14,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  // Risk
+  riskCard: {
+    backgroundColor: "#fff5f5",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.error,
+  },
+  riskText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.text,
+  },
+  // Actions
   actionItem: {
     flexDirection: "row",
     paddingVertical: 8,
@@ -314,6 +475,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 4,
   },
+  // Stage
   stageCard: {
     backgroundColor: COLORS.surface,
     padding: 12,
