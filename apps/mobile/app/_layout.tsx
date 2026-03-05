@@ -1,7 +1,16 @@
 import React from "react";
+import { LogBox } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { COLORS } from "../constants/config";
+
+// Suppress noisy dev warnings from showing the yellow banner
+LogBox.ignoreLogs([
+  "expo-speech-recognition",
+  "VoiceRecognition",
+  "new NativeEventEmitter",
+  "Sending `on",
+]);
 
 export default function RootLayout() {
   return (
