@@ -64,7 +64,6 @@ export async function sendMessage(
   const response = await client.messages.create({
     model: config.anthropic.model,
     max_tokens: 1024,
-    thinking: { type: "adaptive" } as any,
     system: systemPrompt,
     messages: apiMessages,
   });
@@ -123,7 +122,6 @@ export async function* streamMessage(
   const stream = client.messages.stream({
     model: config.anthropic.model,
     max_tokens: 1024,
-    thinking: { type: "adaptive" } as any,
     system: systemPrompt,
     messages: apiMessages,
   });
@@ -180,7 +178,6 @@ export async function generateReport(sessionId: string): Promise<StructuredRepor
   const response = await client.messages.create({
     model: config.anthropic.model,
     max_tokens: 4096,
-    thinking: { type: "adaptive" } as any,
     system: systemPrompt,
     messages: [
       {
