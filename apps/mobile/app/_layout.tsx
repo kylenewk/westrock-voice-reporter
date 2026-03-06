@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
 import { COLORS } from "../constants/config";
 import { useAuth } from "../hooks/useAuth";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 // Suppress noisy dev warnings from showing the yellow banner
 LogBox.ignoreLogs([
@@ -61,7 +62,7 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -96,6 +97,6 @@ export default function RootLayout() {
           options={{ title: "Review Report" }}
         />
       </Stack>
-    </>
+    </ErrorBoundary>
   );
 }
