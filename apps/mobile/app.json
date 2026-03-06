@@ -3,6 +3,7 @@
     "name": "WestRock Voice Reporter",
     "slug": "westrock-voice-reporter",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
     "scheme": "westrock-reporter",
     "icon": "./assets/icon.png",
@@ -16,10 +17,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.westrockcoffee.voicereporter",
+      "buildNumber": "2",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Voice Reporter uses speech recognition to transcribe your call reports.",
         "NSMicrophoneUsageDescription": "Voice Reporter needs microphone access to listen to your verbal reports.",
-        "NSPhotoLibraryUsageDescription": "Voice Reporter may access your photo library to attach images to reports."
+        "NSPhotoLibraryUsageDescription": "Voice Reporter may access your photo library to attach images to reports.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -42,6 +45,13 @@
         }
       ],
       "./plugins/fix-folly-coroutines"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ce278abb-6909-463b-8ff9-b19662a2fe46"
+      }
+    },
+    "owner": "kylenewk"
   }
 }
