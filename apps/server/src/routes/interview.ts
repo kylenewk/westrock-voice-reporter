@@ -8,7 +8,7 @@ import {
   getTranscript,
 } from "../services/claude.js";
 import { getDeal, buildDealContext } from "../services/hubspot.js";
-import { getMockDealDetail, hubspotEnabled } from "./deals.js";
+import { getMockDealDetail } from "./deals.js";
 
 export async function interviewRoutes(app: FastifyInstance) {
   // Start a new interview session
@@ -18,8 +18,8 @@ export async function interviewRoutes(app: FastifyInstance) {
     const { dealId } = request.body;
 
     // Fetch deal context (from HubSpot or mock data)
-    const dealDetail = hubspotEnabled
-      ? await getDeal(dealId)
+    const dealDetail = request.hubspotClient
+      ? await getDeal(request.hubspotClient, dealId)
       : getMockDealDetail(dealId);
     const dealContext = buildDealContext(dealDetail);
 

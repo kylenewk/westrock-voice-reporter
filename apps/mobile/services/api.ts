@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../constants/config";
+import { getAuthToken, clearAuthToken } from "./auth";
 import type {
   DealSummary,
   DealDetail,
@@ -9,15 +10,42 @@ import type {
 } from "../types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+
+  // Attach auth token if available
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
+    headers,
   });
+
+  if (response.status === 401) {
+    clearAuthToken();
+    throw new Error("Authentication expired. Please log in again.");
+  }
+
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`API error ${response.status}: ${body}`);
   }
   return response.json();
+}
+
+// Auth
+export async function getAuthStatus(): Promise<{ authenticated: boolean; portalId?: string; mode?: string }> {
+  return request("/api/auth/me");
+}
+
+export async function logout(): Promise<void> {
+  await request("/api/auth/logout", { method: "POST" });
+  clearAuthToken();
 }
 
 // Deals

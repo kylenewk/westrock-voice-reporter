@@ -1,9 +1,12 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { config, validateConfig } from "./config.js";
+import { authPlugin } from "./middleware/auth.js";
+import { authRoutes } from "./routes/auth.js";
 import { dealsRoutes } from "./routes/deals.js";
 import { interviewRoutes } from "./routes/interview.js";
 import { reportRoutes } from "./routes/report.js";
+import { createTokenStore } from "./services/tokenStore.js";
 
 async function main() {
   validateConfig();
@@ -30,7 +33,14 @@ async function main() {
     }
   );
 
+  // Create token store for OAuth tokens
+  const tokenStore = createTokenStore();
+
+  // Auth middleware — resolves per-request HubSpot client
+  await app.register(authPlugin(tokenStore));
+
   // Register routes
+  await app.register(authRoutes(tokenStore));
   await app.register(dealsRoutes);
   await app.register(interviewRoutes);
   await app.register(reportRoutes);

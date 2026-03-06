@@ -21,8 +21,20 @@ export async function reportRoutes(app: FastifyInstance) {
       options: UploadOptions;
     };
   }>("/api/report/upload", async (request, reply) => {
+    if (!request.hubspotClient) {
+      reply.code(400).send({ error: "HubSpot not configured or not authenticated" });
+      return;
+    }
+
     const { dealId, report, options } = request.body;
-    const result = await uploadReport(dealId, report, options);
+    const result = await uploadReport(
+      request.hubspotClient,
+      request.hubspotPortalId || "",
+      request.hubspotOwnerId || "",
+      dealId,
+      report,
+      options
+    );
     return result;
   });
 }

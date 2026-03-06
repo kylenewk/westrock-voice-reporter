@@ -1,6 +1,5 @@
 import { FastifyInstance } from "fastify";
 import { searchDeals, getDeal } from "../services/hubspot.js";
-import { config } from "../config.js";
 import type { DealSearchResult, DealDetail } from "../types/hubspot.js";
 
 // --- Mock data for testing without HubSpot ---
@@ -84,14 +83,12 @@ export function getMockDealDetail(dealId: string): DealDetail {
   };
 }
 
-export const hubspotEnabled = !!config.hubspot.accessToken;
-
 export async function dealsRoutes(app: FastifyInstance) {
   // Search deals
   app.get<{
     Querystring: { q?: string; ownerId?: string; limit?: string; offset?: string };
   }>("/api/deals", async (request, reply) => {
-    if (!hubspotEnabled) {
+    if (!request.hubspotClient) {
       const { q } = request.query;
       if (q) {
         const filtered = MOCK_DEALS.deals.filter((d) =>
@@ -104,8 +101,9 @@ export async function dealsRoutes(app: FastifyInstance) {
 
     const { q, ownerId, limit, offset } = request.query;
     const result = await searchDeals(
+      request.hubspotClient,
       q || "",
-      ownerId || config.hubspot.defaultOwnerId,
+      ownerId || request.hubspotOwnerId,
       parseInt(limit || "20", 10),
       parseInt(offset || "0", 10)
     );
@@ -114,11 +112,11 @@ export async function dealsRoutes(app: FastifyInstance) {
 
   // Get deal detail
   app.get<{ Params: { id: string } }>("/api/deals/:id", async (request, reply) => {
-    if (!hubspotEnabled) {
+    if (!request.hubspotClient) {
       return getMockDealDetail(request.params.id);
     }
 
-    const detail = await getDeal(request.params.id);
+    const detail = await getDeal(request.hubspotClient, request.params.id);
     return detail;
   });
 }

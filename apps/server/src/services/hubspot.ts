@@ -1,5 +1,4 @@
 import { Client } from "@hubspot/api-client";
-import { config } from "../config.js";
 import type {
   DealSearchResult,
   HubSpotDealSummary,
@@ -10,8 +9,6 @@ import type {
 import type { DealContext } from "../types/interview.js";
 import type { StructuredReport, UploadOptions, UploadResult } from "../types/report.js";
 import { formatReportHtml, formatReportPlainText } from "./reportFormatter.js";
-
-const hubspotClient = new Client({ accessToken: config.hubspot.accessToken });
 
 const DEAL_PROPERTIES = [
   "dealname",
@@ -31,6 +28,7 @@ const DEAL_PROPERTIES = [
 ];
 
 export async function searchDeals(
+  client: Client,
   query: string,
   ownerId?: string,
   limit = 20,
@@ -48,7 +46,7 @@ export async function searchDeals(
     });
   }
 
-  const response = await hubspotClient.crm.deals.searchApi.doSearch({
+  const response = await client.crm.deals.searchApi.doSearch({
     query: query || undefined,
     filterGroups: filterGroups.length > 0 ? filterGroups : undefined,
     properties: DEAL_PROPERTIES,
@@ -73,20 +71,20 @@ export async function searchDeals(
   return { deals, total: response.total || 0 };
 }
 
-export async function getDeal(dealId: string): Promise<DealDetail> {
-  const deal = await hubspotClient.crm.deals.basicApi.getById(dealId, DEAL_PROPERTIES);
+export async function getDeal(client: Client, dealId: string): Promise<DealDetail> {
+  const deal = await client.crm.deals.basicApi.getById(dealId, DEAL_PROPERTIES);
 
   // Fetch associated contacts via REST API
   let contacts: HubSpotContact[] = [];
   try {
-    const assocResponse = await hubspotClient.apiRequest({
+    const assocResponse = await client.apiRequest({
       method: "GET",
       path: `/crm/v3/objects/deals/${dealId}/associations/contacts`,
     });
     const assocData: any = await assocResponse.json();
     if (assocData.results && assocData.results.length > 0) {
       const contactIds = assocData.results.map((a: any) => a.toObjectId || a.id);
-      const contactsResponse = await hubspotClient.crm.contacts.batchApi.read({
+      const contactsResponse = await client.crm.contacts.batchApi.read({
         inputs: contactIds.map((id: string) => ({ id })),
         properties: ["firstname", "lastname", "email", "jobtitle", "company"],
         propertiesWithHistory: [],
@@ -107,14 +105,14 @@ export async function getDeal(dealId: string): Promise<DealDetail> {
   // Fetch associated company via REST API
   let company: HubSpotCompany | null = null;
   try {
-    const compAssocResponse = await hubspotClient.apiRequest({
+    const compAssocResponse = await client.apiRequest({
       method: "GET",
       path: `/crm/v3/objects/deals/${dealId}/associations/companies`,
     });
     const compAssocData: any = await compAssocResponse.json();
     if (compAssocData.results && compAssocData.results.length > 0) {
       const compId = compAssocData.results[0].toObjectId || compAssocData.results[0].id;
-      const compResponse = await hubspotClient.crm.companies.basicApi.getById(
+      const compResponse = await client.crm.companies.basicApi.getById(
         compId,
         ["name", "domain", "industry"]
       );
@@ -153,23 +151,26 @@ export function buildDealContext(detail: DealDetail): DealContext {
 }
 
 export async function uploadReport(
+  client: Client,
+  portalId: string,
+  ownerId: string,
   dealId: string,
   report: StructuredReport,
   options: UploadOptions
 ): Promise<UploadResult> {
   const result: UploadResult = {
     dealUpdated: false,
-    hubspotUrl: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/deal/${dealId}`,
+    hubspotUrl: `https://app.hubspot.com/contacts/${portalId}/deal/${dealId}`,
   };
 
   // 1. Create NOTE with HTML report
   if (options.createNote) {
     const noteBody = formatReportHtml(report);
-    const noteResponse = await hubspotClient.crm.objects.notes.basicApi.create({
+    const noteResponse = await client.crm.objects.notes.basicApi.create({
       properties: {
         hs_note_body: noteBody,
         hs_timestamp: new Date().toISOString(),
-        hubspot_owner_id: config.hubspot.defaultOwnerId,
+        hubspot_owner_id: ownerId,
       } as any,
       associations: [
         {
@@ -193,14 +194,14 @@ export async function uploadReport(
       (a) => !a.company?.toLowerCase().includes("westrock")
     )?.company || "Customer";
 
-    const callResponse = await hubspotClient.crm.objects.calls.basicApi.create({
+    const callResponse = await client.crm.objects.calls.basicApi.create({
       properties: {
         hs_call_title: `Call Report: ${customerName} - ${report.callDate}`,
         hs_call_body: callBody,
         hs_call_direction: "OUTBOUND",
         hs_call_status: "COMPLETED",
         hs_timestamp: new Date().toISOString(),
-        hubspot_owner_id: config.hubspot.defaultOwnerId,
+        hubspot_owner_id: ownerId,
       } as any,
       associations: [
         {
@@ -230,7 +231,7 @@ export async function uploadReport(
     }
 
     if (Object.keys(updates).length > 0) {
-      await hubspotClient.crm.deals.basicApi.update(dealId, { properties: updates });
+      await client.crm.deals.basicApi.update(dealId, { properties: updates });
       result.dealUpdated = true;
     }
   }
