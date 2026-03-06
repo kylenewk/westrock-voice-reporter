@@ -37,13 +37,5 @@
         "EXPO_PUBLIC_API_URL": "https://westrock-voice-reporter.onrender.com"
       }
     }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "",
-        "ascAppId": ""
-      }
-    }
   }
 }

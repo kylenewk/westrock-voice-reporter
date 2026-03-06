@@ -6,3 +6,5 @@ dist/
 .expo/
 ios/
 android/
+apps/server/.claude/worktrees/
+hubspot.config.yml
