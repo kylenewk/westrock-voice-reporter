@@ -67,6 +67,16 @@ export default function RootLayout() {
       >
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="index" options={{ title: "WestRock Voice Reporter" }} />
+        <Stack.Screen name="deal/[id]" options={{ title: "Deal Details" }} />
+        <Stack.Screen
+          name="interview/[dealId]"
+          options={{
+            title: "Call Report",
+            headerBackVisible: false,
+            gestureEnabled: false,
+          }}
+        />
+        <Stack.Screen name="report/[dealId]" options={{ title: "Review Report" }} />
       </Stack>
     </ErrorBoundary>
   );
