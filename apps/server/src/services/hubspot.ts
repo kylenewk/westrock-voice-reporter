@@ -46,29 +46,97 @@ export async function searchDeals(
     });
   }
 
-  const response = await client.crm.deals.searchApi.doSearch({
-    query: query || undefined,
-    filterGroups: filterGroups.length > 0 ? filterGroups : undefined,
-    properties: DEAL_PROPERTIES,
-    limit,
-    after: offset > 0 ? String(offset) : undefined,
-    sorts: [{ propertyName: "hs_lastmodifieddate", direction: "DESCENDING" }],
-  } as any);
+  try {
+    // Primary search: use HubSpot's native `query` parameter which searches
+    // default deal properties (dealname, pipeline, dealstage, description).
+    const searchRequest: any = {
+      properties: DEAL_PROPERTIES,
+      limit,
+      after: offset > 0 ? String(offset) : undefined,
+      sorts: [{ propertyName: "hs_lastmodifieddate", direction: "DESCENDING" }],
+    };
 
-  const deals: HubSpotDealSummary[] = (response.results || []).map((d: any) => ({
-    id: d.id,
-    dealname: d.properties.dealname || "",
-    dealstage: d.properties.dealstage || "",
-    pipeline: d.properties.pipeline || "",
-    customer_name: d.properties.customer_name || null,
-    channel: d.properties.channel || null,
-    segment_type: d.properties.segment_type || null,
-    amount: d.properties.amount || null,
-    closedate: d.properties.closedate || null,
-    hubspot_owner_id: d.properties.hubspot_owner_id || null,
-  }));
+    if (query) {
+      searchRequest.query = query;
+    }
 
-  return { deals, total: response.total || 0 };
+    if (filterGroups.length > 0) {
+      searchRequest.filterGroups = filterGroups;
+    }
+
+    console.log("[searchDeals] Searching with:", JSON.stringify({
+      query: query || "(empty)",
+      hasFilterGroups: filterGroups.length > 0,
+      limit,
+      offset,
+    }));
+
+    const response = await client.crm.deals.searchApi.doSearch(searchRequest);
+
+    console.log("[searchDeals] Got", response.results?.length || 0, "results, total:", response.total);
+
+    let results = response.results || [];
+
+    // If the primary search returned 0 results and we have a query,
+    // try a fallback search using CONTAINS_TOKEN on customer_name
+    // (custom property not covered by HubSpot's full-text query).
+    if (results.length === 0 && query) {
+      try {
+        console.log("[searchDeals] Trying fallback search on customer_name...");
+        const fallbackGroups: any[] = [{
+          filters: [
+            { propertyName: "customer_name", operator: "CONTAINS_TOKEN", value: query },
+          ],
+        }];
+
+        if (ownerId) {
+          fallbackGroups[0].filters.push(
+            { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId }
+          );
+        }
+
+        const fallbackResponse = await client.crm.deals.searchApi.doSearch({
+          filterGroups: fallbackGroups,
+          properties: DEAL_PROPERTIES,
+          limit,
+          after: offset > 0 ? String(offset) : undefined,
+          sorts: [{ propertyName: "hs_lastmodifieddate", direction: "DESCENDING" }],
+        } as any);
+
+        if ((fallbackResponse.results || []).length > 0) {
+          console.log("[searchDeals] Fallback found", fallbackResponse.results!.length, "results");
+          results = fallbackResponse.results || [];
+        }
+      } catch (fallbackErr: any) {
+        // customer_name property may not exist — silently skip fallback
+        console.log("[searchDeals] Fallback search skipped:", fallbackErr?.message);
+      }
+    }
+
+    const deals: HubSpotDealSummary[] = results.map((d: any) => ({
+      id: d.id,
+      dealname: d.properties.dealname || "",
+      dealstage: d.properties.dealstage || "",
+      pipeline: d.properties.pipeline || "",
+      customer_name: d.properties.customer_name || null,
+      channel: d.properties.channel || null,
+      segment_type: d.properties.segment_type || null,
+      amount: d.properties.amount || null,
+      closedate: d.properties.closedate || null,
+      hubspot_owner_id: d.properties.hubspot_owner_id || null,
+    }));
+
+    return { deals, total: response.total || deals.length };
+  } catch (err: any) {
+    console.error("[searchDeals] HubSpot search error:", err?.message || err);
+    if (err?.body) {
+      try {
+        const body = typeof err.body === "string" ? JSON.parse(err.body) : err.body;
+        console.error("[searchDeals] Error body:", JSON.stringify(body));
+      } catch {}
+    }
+    throw err;
+  }
 }
 
 export async function getDeal(client: Client, dealId: string): Promise<DealDetail> {

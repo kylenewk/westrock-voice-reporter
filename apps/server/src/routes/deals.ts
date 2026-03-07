@@ -102,14 +102,23 @@ export async function dealsRoutes(app: FastifyInstance) {
     const { q, ownerId, limit, offset } = request.query;
     // Only filter by owner when explicitly requested via query param.
     // Without this, users can search ALL deals they have access to.
-    const result = await searchDeals(
-      request.hubspotClient,
-      q || "",
-      ownerId || undefined,
-      parseInt(limit || "20", 10),
-      parseInt(offset || "0", 10)
-    );
-    return result;
+    try {
+      const result = await searchDeals(
+        request.hubspotClient,
+        q || "",
+        ownerId || undefined,
+        parseInt(limit || "20", 10),
+        parseInt(offset || "0", 10)
+      );
+      return result;
+    } catch (err: any) {
+      request.log.error({ err, query: q }, "Deal search failed");
+      const message = err?.body?.message || err?.message || "HubSpot search failed";
+      reply.code(502).send({
+        error: `Deal search failed: ${message}`,
+        details: err?.body?.category || undefined,
+      });
+    }
   });
 
   // Get deal detail
