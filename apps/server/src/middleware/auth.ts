@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import fp from "fastify-plugin";
 import { Client } from "@hubspot/api-client";
 import { config } from "../config.js";
 import { TokenStore } from "../services/tokenStore.js";
@@ -13,7 +14,11 @@ declare module "fastify" {
 }
 
 export function authPlugin(tokenStore: TokenStore) {
-  return async function (app: FastifyInstance) {
+  // Wrap with fastify-plugin (fp) to break encapsulation.
+  // Without fp, hooks registered inside a plugin only apply to that
+  // plugin's scope — NOT to sibling plugins (like route plugins).
+  // fp ensures this hook applies to ALL routes in the app.
+  return fp(async function (app: FastifyInstance) {
     app.decorateRequest("hubspotClient", undefined);
     app.decorateRequest("hubspotPortalId", undefined);
     app.decorateRequest("hubspotOwnerId", undefined);
@@ -66,5 +71,5 @@ export function authPlugin(tokenStore: TokenStore) {
         // If neither is available, hubspotClient remains undefined — routes use mock data
       }
     );
-  };
+  });
 }
