@@ -120,12 +120,16 @@ function InterviewContent() {
     messages,
     currentTranscript,
     error,
+    voiceError,
     sessionId,
     startInterview,
     finishSpeaking,
     endInterview,
     generateReport,
   } = useInterview();
+
+  // Combine errors — show voice errors alongside interview errors
+  const displayError = error || voiceError;
 
   // Start interview on mount
   useEffect(() => {
@@ -188,9 +192,9 @@ function InterviewContent() {
   return (
     <View style={styles.container}>
       {/* Error Banner */}
-      {error && (
+      {displayError && (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{displayError}</Text>
         </View>
       )}
 

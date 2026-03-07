@@ -7,6 +7,8 @@ const PREFERRED_NAMES = ["Ava", "Zoe", "Samantha", "Allison", "Nicky"];
 // Lazy-loaded — NOT imported at module evaluation time to avoid crash on launch
 let _speechLib: any = null;
 let _speechLoadAttempted = false;
+let _avLib: any = null;
+let _avLoadAttempted = false;
 
 function getSpeechLib(): any {
   if (_speechLoadAttempted) return _speechLib;
@@ -17,6 +19,45 @@ function getSpeechLib(): any {
     console.warn("[TTS] Failed to load expo-speech:", e.message);
   }
   return _speechLib;
+}
+
+function getAvLib(): any {
+  if (_avLoadAttempted) return _avLib;
+  _avLoadAttempted = true;
+  try {
+    _avLib = require("expo-av");
+  } catch (e: any) {
+    console.warn("[TTS] Failed to load expo-av:", e.message);
+  }
+  return _avLib;
+}
+
+/**
+ * Configure the iOS audio session so TTS plays even when the
+ * physical mute/silent switch is on. This is the #1 reason
+ * "I see text but hear no voice" on iOS devices.
+ *
+ * We call this every time before TTS speaks because speech
+ * recognition may have changed the audio session category
+ * to "record" mode, which blocks TTS output.
+ */
+async function ensureAudioSession(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const av = getAvLib();
+    if (!av?.Audio) {
+      console.warn("[TTS] expo-av Audio not available, skipping audio session config");
+      return;
+    }
+    await av.Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false, // TTS mode — not recording
+      staysActiveInBackground: false,
+    });
+    console.log("[TTS] Audio session configured for playback");
+  } catch (e: any) {
+    console.warn("[TTS] Failed to configure audio session:", e.message);
+  }
 }
 
 interface UseTextToSpeechReturn {
@@ -89,6 +130,9 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       console.warn("[TTS] expo-speech not available, skipping");
       return;
     }
+
+    // Ensure audio session is configured so TTS plays even in silent mode
+    await ensureAudioSession();
 
     return new Promise<void>((resolve) => {
       resolveRef.current = resolve;

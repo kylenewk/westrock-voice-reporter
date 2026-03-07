@@ -19,6 +19,7 @@ interface UseInterviewReturn {
   report: StructuredReport | null;
   sessionId: string | null;
   error: string | null;
+  voiceError: string | null;
   startInterview: (dealId: string) => Promise<void>;
   finishSpeaking: () => void;
   endInterview: () => Promise<void>;
@@ -189,6 +190,7 @@ export function useInterview(): UseInterviewReturn {
     report,
     sessionId: sessionIdRef.current,
     error,
+    voiceError: voice.error,
     startInterview,
     finishSpeaking,
     endInterview,
