@@ -1,24 +1,30 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
-// Lazy-load expo-speech-recognition to avoid crashing in Expo Go
-let ExpoSpeechRecognitionModule: any = null;
-let useSpeechRecognitionEvent: any = null;
-let speechRecognitionAvailable = false;
-
-try {
-  const mod = require("expo-speech-recognition");
-  ExpoSpeechRecognitionModule = mod.ExpoSpeechRecognitionModule;
-  useSpeechRecognitionEvent = mod.useSpeechRecognitionEvent;
-  speechRecognitionAvailable = !!ExpoSpeechRecognitionModule;
-} catch {
-  console.warn("[VoiceRecognition] expo-speech-recognition not available (Expo Go?)");
-}
-
-// No-op hook for when the native module isn't available
-const useNoOpEvent = (_event: string, _handler: any) => {};
-
 // How long to wait after the user stops talking before auto-submitting (ms)
 const SILENCE_TIMEOUT_MS = 2000;
+
+// Lazy-loaded references — only resolved when startListening() is called,
+// NOT at module evaluation time (which would crash on launch).
+let _speechModule: any = null;
+let _loadAttempted = false;
+let _loadError: string | null = null;
+
+function getSpeechModule(): { module: any; error: string | null } {
+  if (_loadAttempted) return { module: _speechModule, error: _loadError };
+  _loadAttempted = true;
+  try {
+    const mod = require("expo-speech-recognition");
+    if (mod?.ExpoSpeechRecognitionModule) {
+      _speechModule = mod;
+    } else {
+      _loadError = "Speech recognition module loaded but is empty";
+    }
+  } catch (e: any) {
+    _loadError = e.message || "Failed to load speech recognition";
+    console.warn("[VoiceRecognition] Load failed:", _loadError);
+  }
+  return { module: _speechModule, error: _loadError };
+}
 
 interface UseVoiceRecognitionReturn {
   transcript: string;
@@ -39,10 +45,8 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpokenRef = useRef(false);
   const onSilenceDetected = useRef<(() => void) | null>(null);
+  const eventSubsRef = useRef<Array<{ remove: () => void }>>([]);
 
-  const useEvent = speechRecognitionAvailable ? useSpeechRecognitionEvent : useNoOpEvent;
-
-  // Clear the silence timer
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
@@ -50,10 +54,8 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     }
   }, []);
 
-  // Reset and start a new silence timer
   const resetSilenceTimer = useCallback(() => {
     clearSilenceTimer();
-    // Only start the timer if the user has actually spoken something
     if (hasSpokenRef.current) {
       silenceTimerRef.current = setTimeout(() => {
         console.log("[VoiceRecognition] Silence detected — auto-submitting");
@@ -64,77 +66,102 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     }
   }, [clearSilenceTimer]);
 
-  useEvent("start", () => {
-    setIsListening(true);
-    setError(null);
-    hasSpokenRef.current = false;
-    clearSilenceTimer();
-  });
-
-  useEvent("end", () => {
-    setIsListening(false);
-    clearSilenceTimer();
-  });
-
-  useEvent("result", (event: any) => {
-    if (event.results && event.results.length > 0) {
-      const text = event.results[0]?.transcript ?? "";
-      setTranscript(text);
-
-      // User is actively speaking — mark as spoken and reset the silence timer
-      if (text.trim().length > 0) {
-        hasSpokenRef.current = true;
-        resetSilenceTimer();
-      }
-    }
-  });
-
-  useEvent("error", (event: any) => {
-    setError(event.error || "Speech recognition error");
-    setIsListening(false);
-    clearSilenceTimer();
-  });
-
   // Cleanup on unmount
   useEffect(() => {
-    return () => clearSilenceTimer();
+    return () => {
+      clearSilenceTimer();
+      eventSubsRef.current.forEach((sub) => {
+        try { sub.remove(); } catch {}
+      });
+      eventSubsRef.current = [];
+    };
   }, [clearSilenceTimer]);
 
   const startListening = useCallback(async () => {
-    if (!speechRecognitionAvailable) {
-      setError(
-        "Speech recognition requires a dev client build. Run: npx expo run:ios --device"
-      );
-      return;
-    }
-
     try {
+      // Lazy-load the native module on first actual use
+      const { module: mod, error: loadErr } = getSpeechModule();
+      if (!mod) {
+        setError(loadErr || "Speech recognition not available. Requires a native build.");
+        return;
+      }
+
+      const srModule = mod.ExpoSpeechRecognitionModule;
       setTranscript("");
       setError(null);
       hasSpokenRef.current = false;
       clearSilenceTimer();
 
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      // Request permissions
+      const result = await srModule.requestPermissionsAsync();
       if (!result.granted) {
         setError("Microphone permission is required for voice input.");
         return;
       }
 
-      ExpoSpeechRecognitionModule.start({
+      // Remove old event subscriptions
+      eventSubsRef.current.forEach((sub) => {
+        try { sub.remove(); } catch {}
+      });
+      eventSubsRef.current = [];
+
+      // Set up event listeners via the library's addListener API
+      if (mod.addSpeechRecognitionListener) {
+        eventSubsRef.current.push(
+          mod.addSpeechRecognitionListener("start", () => {
+            setIsListening(true);
+            setError(null);
+            hasSpokenRef.current = false;
+          })
+        );
+
+        eventSubsRef.current.push(
+          mod.addSpeechRecognitionListener("end", () => {
+            setIsListening(false);
+            clearSilenceTimer();
+          })
+        );
+
+        eventSubsRef.current.push(
+          mod.addSpeechRecognitionListener("result", (event: any) => {
+            if (event.results && event.results.length > 0) {
+              const text = event.results[0]?.transcript ?? "";
+              setTranscript(text);
+              if (text.trim().length > 0) {
+                hasSpokenRef.current = true;
+                resetSilenceTimer();
+              }
+            }
+          })
+        );
+
+        eventSubsRef.current.push(
+          mod.addSpeechRecognitionListener("error", (event: any) => {
+            setError(event.error || "Speech recognition error");
+            setIsListening(false);
+            clearSilenceTimer();
+          })
+        );
+      }
+
+      // Start recognition
+      srModule.start({
         lang: "en-US",
         interimResults: true,
         continuous: true,
       });
     } catch (e: any) {
       setError(e.message || "Failed to start voice recognition");
+      console.error("[VoiceRecognition] startListening error:", e);
     }
-  }, [clearSilenceTimer]);
+  }, [clearSilenceTimer, resetSilenceTimer]);
 
   const stopListening = useCallback(async () => {
-    if (!speechRecognitionAvailable) return;
     clearSilenceTimer();
     try {
-      ExpoSpeechRecognitionModule.stop();
+      if (_speechModule?.ExpoSpeechRecognitionModule) {
+        _speechModule.ExpoSpeechRecognitionModule.stop();
+      }
       setIsListening(false);
     } catch (e: any) {
       setError(e.message || "Failed to stop voice recognition");

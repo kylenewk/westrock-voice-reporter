@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { COLORS } from "../../constants/config";
@@ -14,7 +15,102 @@ import { VoiceOrb } from "../../components/VoiceOrb";
 import { TranscriptBubble } from "../../components/TranscriptBubble";
 import type { InterviewMessage } from "../../types";
 
-export default function InterviewScreen() {
+// Screen-level error boundary so a crash here doesn't kill the whole app
+class InterviewErrorBoundary extends React.Component<
+  { children: React.ReactNode; onGoBack: () => void },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[InterviewError]", error.message, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={boundaryStyles.container}>
+          <Text style={boundaryStyles.icon}>!</Text>
+          <Text style={boundaryStyles.title}>Interview Error</Text>
+          <ScrollView style={boundaryStyles.errorBox}>
+            <Text style={boundaryStyles.errorText}>
+              {this.state.error?.message || "An unexpected error occurred"}
+            </Text>
+          </ScrollView>
+          <TouchableOpacity
+            style={boundaryStyles.button}
+            onPress={this.props.onGoBack}
+          >
+            <Text style={boundaryStyles.buttonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const boundaryStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+    backgroundColor: COLORS.primary,
+  },
+  icon: {
+    fontSize: 48,
+    fontWeight: "700",
+    color: COLORS.error,
+    marginBottom: 12,
+    width: 64,
+    height: 64,
+    lineHeight: 64,
+    textAlign: "center",
+    borderRadius: 32,
+    borderWidth: 3,
+    borderColor: COLORS.error,
+    overflow: "hidden",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#ffffff",
+    marginBottom: 12,
+  },
+  errorBox: {
+    maxHeight: 120,
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 24,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.7)",
+  },
+  button: {
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  buttonText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+});
+
+function InterviewContent() {
   const { dealId } = useLocalSearchParams<{ dealId: string }>();
   const router = useRouter();
   const flatListRef = useRef<FlatList<InterviewMessage>>(null);
@@ -143,6 +239,15 @@ export default function InterviewScreen() {
         </View>
       </View>
     </View>
+  );
+}
+
+export default function InterviewScreen() {
+  const router = useRouter();
+  return (
+    <InterviewErrorBoundary onGoBack={() => router.back()}>
+      <InterviewContent />
+    </InterviewErrorBoundary>
   );
 }
 
