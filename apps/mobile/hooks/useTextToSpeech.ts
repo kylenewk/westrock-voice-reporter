@@ -51,10 +51,10 @@ async function ensureAudioSession(): Promise<void> {
     }
     await av.Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
-      allowsRecordingIOS: false, // TTS mode — not recording
+      allowsRecordingIOS: true, // Must stay true — interview needs mic for speech recognition after TTS
       staysActiveInBackground: false,
     });
-    console.log("[TTS] Audio session configured for playback");
+    console.log("[TTS] Audio session configured (playsInSilentMode + recording enabled)");
   } catch (e: any) {
     console.warn("[TTS] Failed to configure audio session:", e.message);
   }

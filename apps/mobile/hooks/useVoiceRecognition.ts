@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { Platform } from "react-native";
 
 // How long to wait after the user stops talking before auto-submitting (ms)
 const SILENCE_TIMEOUT_MS = 2000;
@@ -8,6 +9,8 @@ const SILENCE_TIMEOUT_MS = 2000;
 let _speechModule: any = null;
 let _loadAttempted = false;
 let _loadError: string | null = null;
+let _avLib: any = null;
+let _avLoadAttempted = false;
 
 function getSpeechModule(): { module: any; error: string | null } {
   if (_loadAttempted) return { module: _speechModule, error: _loadError };
@@ -24,6 +27,37 @@ function getSpeechModule(): { module: any; error: string | null } {
     console.warn("[VoiceRecognition] Load failed:", _loadError);
   }
   return { module: _speechModule, error: _loadError };
+}
+
+function getAvLib(): any {
+  if (_avLoadAttempted) return _avLib;
+  _avLoadAttempted = true;
+  try {
+    _avLib = require("expo-av");
+  } catch (e: any) {
+    console.warn("[VoiceRecognition] Failed to load expo-av:", e.message);
+  }
+  return _avLib;
+}
+
+/**
+ * Ensure the iOS audio session allows recording before starting
+ * speech recognition. TTS may have changed the session config.
+ */
+async function ensureRecordingAudioSession(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const av = getAvLib();
+    if (!av?.Audio) return;
+    await av.Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: true,
+      staysActiveInBackground: false,
+    });
+    console.log("[VoiceRecognition] Audio session configured for recording");
+  } catch (e: any) {
+    console.warn("[VoiceRecognition] Failed to configure audio session:", e.message);
+  }
 }
 
 interface UseVoiceRecognitionReturn {
@@ -91,6 +125,9 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       setError(null);
       hasSpokenRef.current = false;
       clearSilenceTimer();
+
+      // Ensure audio session allows recording (TTS may have changed it)
+      await ensureRecordingAudioSession();
 
       // Request permissions
       const result = await srModule.requestPermissionsAsync();
