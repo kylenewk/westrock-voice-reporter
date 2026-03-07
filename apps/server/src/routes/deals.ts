@@ -100,10 +100,12 @@ export async function dealsRoutes(app: FastifyInstance) {
     }
 
     const { q, ownerId, limit, offset } = request.query;
+    // Only filter by owner when explicitly requested via query param.
+    // Without this, users can search ALL deals they have access to.
     const result = await searchDeals(
       request.hubspotClient,
       q || "",
-      ownerId || request.hubspotOwnerId,
+      ownerId || undefined,
       parseInt(limit || "20", 10),
       parseInt(offset || "0", 10)
     );

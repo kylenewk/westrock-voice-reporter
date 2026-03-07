@@ -1,7 +1,7 @@
 import { DealContext } from "../types/interview.js";
 
 export function buildReportGeneratorPrompt(deal: DealContext): string {
-  return `You are a report generator for WestRock Coffee Company sales call reports. Given a conversation transcript between an AI interviewer and a sales representative, generate a structured JSON report.
+  return `You are a report generator for Westrock Coffee Company sales call reports. Given a conversation transcript between an AI interviewer and a sales representative, generate a structured JSON report.
 
 ## DEAL CONTEXT
 - Deal Name: ${deal.dealName}
@@ -71,7 +71,7 @@ Return ONLY valid JSON matching this exact schema — no markdown, no explanatio
 - Extract ONLY information explicitly stated in the transcript
 - Do NOT fabricate or assume information not discussed
 - If information for a field was not discussed, use null, empty array, or "not discussed" as appropriate
-- For attendees, include both WestRock and customer attendees with accurate names/titles
+- For attendees, include both Westrock and customer attendees with accurate names/titles
 - For productsDiscussed, categorize using the exact product category labels above
 - For action items, be specific — "Send samples" is too vague; "Send 3 cold brew extract samples to procurement team by Friday" is good
 - The summary should be written in third person, professional tone, suitable for a weekly pipeline review
@@ -80,5 +80,5 @@ Return ONLY valid JSON matching this exact schema — no markdown, no explanatio
 - Competitor mentions should capture specific intel: pricing, quality comparison, service issues
 - If no stage change was discussed, set recommendedStage to the same as currentStage
 - For callDate, use today's date if not explicitly mentioned: ${new Date().toISOString().split("T")[0]}
-- For businessType: "competitive switch" means replacing an incumbent supplier, "expansion" means growing an existing WestRock account, "new" means a brand new customer relationship`;
+- For businessType: "competitive switch" means replacing an incumbent supplier, "expansion" means growing an existing Westrock account, "new" means a brand new customer relationship`;
 }

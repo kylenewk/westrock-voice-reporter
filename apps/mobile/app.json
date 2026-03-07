@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "WestRock Voice Reporter",
+    "name": "Westrock Voice Reporter",
     "slug": "westrock-voice-reporter",
     "version": "1.0.0",
     "runtimeVersion": "1.0.0",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.westrockcoffee.voicereporter",
-      "buildNumber": "19",
+      "buildNumber": "24",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Voice Reporter uses speech recognition to transcribe your call reports.",
         "NSMicrophoneUsageDescription": "Voice Reporter needs microphone access to listen to your verbal reports.",

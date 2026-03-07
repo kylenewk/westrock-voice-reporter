@@ -18,7 +18,6 @@
   "dependencies": {
     "expo": "~54.0.33",
     "expo-constants": "~17.0.0",
-    "expo-dev-client": "~6.0.20",
     "expo-linking": "~7.0.0",
     "expo-router": "~5.0.0",
     "expo-speech": "~13.0.0",
@@ -34,6 +33,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "expo-dev-client": "~6.0.20",
     "typescript": "~5.9.2"
   },
   "private": true

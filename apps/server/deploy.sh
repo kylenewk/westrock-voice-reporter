@@ -2,7 +2,7 @@
 set -e
 
 echo "========================================="
-echo "  WestRock Voice Reporter - Deploy to Railway"
+echo "  Westrock Voice Reporter - Deploy to Railway"
 echo "========================================="
 echo ""
 

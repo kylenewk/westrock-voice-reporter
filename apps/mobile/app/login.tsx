@@ -20,7 +20,7 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>WestRock</Text>
+        <Text style={styles.title}>Westrock</Text>
         <Text style={styles.subtitle}>Voice Reporter</Text>
         <Text style={styles.description}>
           Connect your HubSpot account to start recording call reports.

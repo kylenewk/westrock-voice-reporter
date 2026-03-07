@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { LogBox, ActivityIndicator, View } from "react-native";
-import { Stack, useRouter, useRootNavigationState } from "expo-router";
+import { Stack, useRouter, useSegments, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
 import { COLORS } from "../constants/config";
@@ -17,7 +17,8 @@ LogBox.ignoreLogs([
 export default function RootLayout() {
   const { isAuthenticated, loading, checkAuth, handleCallback } = useAuth();
   const router = useRouter();
-  const navState = useRootNavigationState();
+  const segments = useSegments();
+  const navigationRef = useNavigationContainerRef();
 
   useEffect(() => {
     checkAuth();
@@ -40,11 +41,13 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (loading || !navState?.key) return;
+    if (loading) return;
+    // Wait until the navigation container is ready
+    if (!navigationRef?.isReady()) return;
     if (!isAuthenticated) {
       router.replace("/login");
     }
-  }, [isAuthenticated, loading, navState?.key]);
+  }, [isAuthenticated, loading, segments]);
 
   if (loading) {
     return (
@@ -66,7 +69,7 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="index" options={{ title: "WestRock Voice Reporter" }} />
+        <Stack.Screen name="index" options={{ title: "Westrock Voice Reporter" }} />
         <Stack.Screen name="deal/[id]" options={{ title: "Deal Details" }} />
         <Stack.Screen
           name="interview/[dealId]"
