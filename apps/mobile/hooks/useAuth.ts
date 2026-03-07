@@ -9,7 +9,7 @@ interface AuthState {
   checkAuth: () => Promise<void>;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  handleCallback: (url: string) => boolean;
+  handleCallback: (url: string) => Promise<boolean>;
 }
 
 export const useAuth = create<AuthState>((set) => ({
@@ -18,7 +18,12 @@ export const useAuth = create<AuthState>((set) => ({
   portalId: null,
 
   checkAuth: async () => {
-    // Check if we have a locally stored token
+    // First, try to restore a persisted session from secure storage
+    if (!auth.isAuthenticated()) {
+      await auth.loadPersistedAuth();
+    }
+
+    // If we have a token (either from memory or restored), validate it
     if (auth.isAuthenticated()) {
       try {
         const status = await getAuthStatus();
@@ -32,7 +37,7 @@ export const useAuth = create<AuthState>((set) => ({
         }
       } catch {
         // Token invalid — clear it
-        auth.clearAuthToken();
+        await auth.clearAuthToken();
       }
     }
     set({ isAuthenticated: false, loading: false });
@@ -48,14 +53,14 @@ export const useAuth = create<AuthState>((set) => ({
     } catch {
       // Best effort — clear local state regardless
     }
-    auth.clearAuthToken();
+    await auth.clearAuthToken();
     set({ isAuthenticated: false, portalId: null });
   },
 
-  handleCallback: (url: string) => {
+  handleCallback: async (url: string) => {
     const result = auth.parseAuthCallback(url);
     if (result) {
-      auth.setAuthToken(result.token, result.portalId);
+      await auth.setAuthToken(result.token, result.portalId);
       set({
         isAuthenticated: true,
         portalId: result.portalId || null,

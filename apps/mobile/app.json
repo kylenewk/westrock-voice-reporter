@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.westrockcoffee.voicereporter",
-      "buildNumber": "26",
+      "buildNumber": "31",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Voice Reporter uses speech recognition to transcribe your call reports.",
         "NSMicrophoneUsageDescription": "Voice Reporter needs microphone access to listen to your verbal reports.",
@@ -50,7 +50,8 @@
           "microphonePermission": "Voice Reporter needs microphone access to listen to your verbal reports."
         }
       ],
-      "./plugins/fix-folly-coroutines"
+      "./plugins/fix-folly-coroutines",
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},

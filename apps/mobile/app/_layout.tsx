@@ -25,15 +25,16 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    const subscription = Linking.addEventListener("url", (event) => {
-      if (handleCallback(event.url)) {
+    const subscription = Linking.addEventListener("url", async (event) => {
+      const handled = await handleCallback(event.url);
+      if (handled) {
         router.replace("/");
       }
     });
 
-    Linking.getInitialURL().then((url) => {
+    Linking.getInitialURL().then(async (url) => {
       if (url) {
-        handleCallback(url);
+        await handleCallback(url);
       }
     });
 
