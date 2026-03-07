@@ -3,29 +3,38 @@ import { useState, useCallback, useRef, useEffect } from "react";
 // How long to wait after the user stops talking before auto-submitting (ms)
 const SILENCE_TIMEOUT_MS = 2000;
 
-// Lazy-loaded references — only resolved when startListening() is called,
-// NOT at module evaluation time (which would crash on launch).
+// Retry config for starting speech recognition
+const MAX_START_RETRIES = 3;
+const RETRY_DELAY_MS = 600;
+
+/**
+ * Load the expo-speech-recognition native module.
+ * Can be called multiple times — will re-attempt if previous load failed.
+ */
 let _speechModule: any = null;
-let _loadAttempted = false;
-let _loadError: string | null = null;
 
 function getSpeechModule(): { srModule: any; error: string | null } {
-  if (_loadAttempted) return { srModule: _speechModule, error: _loadError };
-  _loadAttempted = true;
+  if (_speechModule) return { srModule: _speechModule, error: null };
   try {
     const mod = require("expo-speech-recognition");
     if (mod?.ExpoSpeechRecognitionModule) {
       _speechModule = mod.ExpoSpeechRecognitionModule;
       console.log("[VoiceRecognition] Module loaded successfully");
+      return { srModule: _speechModule, error: null };
     } else {
-      _loadError = "Speech recognition module loaded but ExpoSpeechRecognitionModule is missing";
-      console.warn("[VoiceRecognition]", _loadError);
+      const err = "Speech module loaded but ExpoSpeechRecognitionModule missing";
+      console.warn("[VoiceRecognition]", err);
+      return { srModule: null, error: err };
     }
   } catch (e: any) {
-    _loadError = e.message || "Failed to load speech recognition";
-    console.warn("[VoiceRecognition] Load failed:", _loadError);
+    const err = e.message || "Failed to load speech recognition";
+    console.warn("[VoiceRecognition] Load failed:", err);
+    return { srModule: null, error: err };
   }
-  return { srModule: _speechModule, error: _loadError };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 interface UseVoiceRecognitionReturn {
@@ -79,42 +88,20 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     };
   }, [clearSilenceTimer]);
 
-  const startListening = useCallback(async () => {
-    try {
-      console.log("[VoiceRecognition] startListening called");
+  /** Remove all existing event subscriptions */
+  const cleanupListeners = useCallback(() => {
+    eventSubsRef.current.forEach((sub) => {
+      try { sub.remove(); } catch {}
+    });
+    eventSubsRef.current = [];
+  }, []);
 
-      // Lazy-load the native module on first actual use
-      const { srModule, error: loadErr } = getSpeechModule();
-      if (!srModule) {
-        const errMsg = loadErr || "Speech recognition not available. Requires a native build.";
-        console.error("[VoiceRecognition] Module not available:", errMsg);
-        setError(errMsg);
-        return;
-      }
+  /** Set up fresh event listeners on the native module */
+  const setupListeners = useCallback(
+    (srModule: any) => {
+      cleanupListeners();
 
-      setTranscript("");
-      setError(null);
-      hasSpokenRef.current = false;
-      clearSilenceTimer();
-
-      // Request permissions
-      console.log("[VoiceRecognition] Requesting permissions...");
-      const result = await srModule.requestPermissionsAsync();
-      console.log("[VoiceRecognition] Permission result:", JSON.stringify(result));
-      if (!result.granted) {
-        setError("Microphone & speech recognition permissions are required. Check Settings > Privacy.");
-        return;
-      }
-
-      // Remove old event subscriptions
-      eventSubsRef.current.forEach((sub) => {
-        try { sub.remove(); } catch {}
-      });
-      eventSubsRef.current = [];
-
-      // Set up event listeners using the native module's addListener API
-      // (ExpoSpeechRecognitionModule extends NativeModule which provides addListener)
-      console.log("[VoiceRecognition] Setting up event listeners via srModule.addListener");
+      console.log("[VoiceRecognition] Setting up event listeners");
 
       eventSubsRef.current.push(
         srModule.addListener("start", () => {
@@ -138,7 +125,11 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
           if (event.results && event.results.length > 0) {
             const text = event.results[0]?.transcript ?? "";
             const isFinal = event.isFinal ?? false;
-            console.log("[VoiceRecognition] EVENT: result —", isFinal ? "FINAL:" : "interim:", text.substring(0, 50));
+            console.log(
+              "[VoiceRecognition] EVENT: result —",
+              isFinal ? "FINAL:" : "interim:",
+              text.substring(0, 50)
+            );
             setTranscript(text);
             if (text.trim().length > 0) {
               hasSpokenRef.current = true;
@@ -151,29 +142,111 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       eventSubsRef.current.push(
         srModule.addListener("error", (event: any) => {
           const errMsg = event.error || event.message || "Speech recognition error";
-          console.error("[VoiceRecognition] EVENT: error —", JSON.stringify(event));
+          console.error(
+            "[VoiceRecognition] EVENT: error —",
+            JSON.stringify(event)
+          );
+          // Don't show transient "not available" errors — the retry logic
+          // in startListening will handle them.
           setError(errMsg);
           setIsListening(false);
           clearSilenceTimer();
         })
       );
+    },
+    [cleanupListeners, clearSilenceTimer, resetSilenceTimer]
+  );
 
-      // Start recognition
-      // expo-speech-recognition automatically sets iOS audio session to
-      // playAndRecord (which ignores the mute switch and supports mic input)
-      console.log("[VoiceRecognition] Calling srModule.start()");
-      srModule.start({
-        lang: "en-US",
-        interimResults: true,
-        continuous: true,
-      });
-      console.log("[VoiceRecognition] srModule.start() returned");
+  const startListening = useCallback(async () => {
+    try {
+      console.log("[VoiceRecognition] startListening called");
+
+      // Load the native module
+      const { srModule, error: loadErr } = getSpeechModule();
+      if (!srModule) {
+        const errMsg =
+          loadErr || "Speech recognition not available. Requires a native build.";
+        console.error("[VoiceRecognition] Module not available:", errMsg);
+        setError(errMsg);
+        return;
+      }
+
+      setTranscript("");
+      setError(null);
+      hasSpokenRef.current = false;
+      clearSilenceTimer();
+
+      // Request permissions
+      console.log("[VoiceRecognition] Requesting permissions...");
+      const result = await srModule.requestPermissionsAsync();
+      console.log(
+        "[VoiceRecognition] Permission result:",
+        JSON.stringify(result)
+      );
+      if (!result.granted) {
+        setError(
+          "Microphone & speech recognition permissions required. Check Settings > Privacy."
+        );
+        return;
+      }
+
+      // Set up fresh event listeners
+      setupListeners(srModule);
+
+      // Attempt to start recognition with retries.
+      // iOS can throw "not available" errors if the audio session is still
+      // transitioning from TTS playback; a short delay and retry fixes this.
+      let lastErr: string | null = null;
+      for (let attempt = 1; attempt <= MAX_START_RETRIES; attempt++) {
+        try {
+          console.log(
+            `[VoiceRecognition] Calling srModule.start() (attempt ${attempt}/${MAX_START_RETRIES})`
+          );
+
+          // Stop any lingering recognition before retrying
+          if (attempt > 1) {
+            try { srModule.stop(); } catch {}
+            await delay(RETRY_DELAY_MS);
+            // Re-setup listeners since stop may have triggered "end" event
+            setupListeners(srModule);
+          }
+
+          srModule.start({
+            lang: "en-US",
+            interimResults: true,
+            continuous: true,
+          });
+
+          console.log("[VoiceRecognition] srModule.start() returned");
+
+          // Give the native side a moment to report errors
+          await delay(300);
+
+          // If we're not in an error state, break out of retry loop
+          // (the "start" event sets isListening=true, "error" event sets error)
+          lastErr = null;
+          break;
+        } catch (startErr: any) {
+          lastErr = startErr.message || "Failed to start recognition";
+          console.warn(
+            `[VoiceRecognition] start() attempt ${attempt} failed:`,
+            lastErr
+          );
+          if (attempt < MAX_START_RETRIES) {
+            await delay(RETRY_DELAY_MS);
+          }
+        }
+      }
+
+      if (lastErr) {
+        setError(lastErr);
+      }
     } catch (e: any) {
       const errMsg = e.message || "Failed to start voice recognition";
       console.error("[VoiceRecognition] startListening error:", e);
       setError(errMsg);
     }
-  }, [clearSilenceTimer, resetSilenceTimer]);
+  }, [clearSilenceTimer, setupListeners]);
 
   const stopListening = useCallback(async () => {
     clearSilenceTimer();
