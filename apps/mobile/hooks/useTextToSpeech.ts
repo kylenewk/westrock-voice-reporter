@@ -10,8 +10,6 @@ const TTS_TIMEOUT_MS = 30000;
 // Lazy-loaded — NOT imported at module evaluation time to avoid crash on launch
 let _speechLib: any = null;
 let _speechLoadAttempted = false;
-let _avLib: any = null;
-let _avLoadAttempted = false;
 
 function getSpeechLib(): any {
   if (_speechLoadAttempted) return _speechLib;
@@ -22,58 +20,6 @@ function getSpeechLib(): any {
     console.warn("[TTS] Failed to load expo-speech:", e.message);
   }
   return _speechLib;
-}
-
-function getAvLib(): any {
-  if (_avLoadAttempted) return _avLib;
-  _avLoadAttempted = true;
-  try {
-    _avLib = require("expo-av");
-  } catch (e: any) {
-    console.warn("[TTS] Failed to load expo-av:", e.message);
-  }
-  return _avLib;
-}
-
-/**
- * Configure the iOS audio session so TTS plays even when the
- * physical mute/silent switch is on.
- */
-async function activateAudioForTTS(): Promise<void> {
-  if (Platform.OS !== "ios") return;
-  try {
-    const av = getAvLib();
-    if (!av?.Audio) return;
-    await av.Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-    });
-    console.log("[TTS] Audio session activated for playback");
-  } catch (e: any) {
-    console.warn("[TTS] Failed to activate audio session:", e.message);
-  }
-}
-
-/**
- * Reset audio session to defaults after TTS finishes, so
- * expo-speech-recognition can configure its own AVAudioEngine
- * session without conflicts.
- */
-async function deactivateAudioSession(): Promise<void> {
-  if (Platform.OS !== "ios") return;
-  try {
-    const av = getAvLib();
-    if (!av?.Audio) return;
-    await av.Audio.setAudioModeAsync({
-      playsInSilentModeIOS: false,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-    });
-    console.log("[TTS] Audio session reset to defaults");
-  } catch (e: any) {
-    console.warn("[TTS] Failed to reset audio session:", e.message);
-  }
 }
 
 interface UseTextToSpeechReturn {
@@ -141,18 +87,6 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
     return () => clearTimeout(timer);
   }, []);
 
-  const cleanupAfterSpeak = useCallback(async (resolve: () => void) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    setIsSpeaking(false);
-    resolveRef.current = null;
-    // Reset audio session so speech recognition can use its own
-    await deactivateAudioSession();
-    resolve();
-  }, []);
-
   const speak = useCallback(async (text: string): Promise<void> => {
     const Speech = getSpeechLib();
     if (!Speech) {
@@ -160,19 +94,32 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       return;
     }
 
-    // Activate audio session for TTS playback (plays in silent mode)
-    await activateAudioForTTS();
+    // NOTE: Audio session is configured once by useInterview before the
+    // interview starts. We do NOT touch the audio session here to avoid
+    // conflicts with expo-speech-recognition.
 
     return new Promise<void>((resolve) => {
-      resolveRef.current = resolve;
+      let resolved = false;
+      const doResolve = () => {
+        if (resolved) return;
+        resolved = true;
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        setIsSpeaking(false);
+        resolveRef.current = null;
+        resolve();
+      };
+
+      resolveRef.current = doResolve;
       setIsSpeaking(true);
 
       // Safety timeout — if onDone/onStopped never fires, force-resolve
-      // so the interview flow continues to listening phase
       timeoutRef.current = setTimeout(() => {
         console.warn("[TTS] Timeout — forcing resolve after", TTS_TIMEOUT_MS, "ms");
         try { Speech.stop(); } catch {}
-        cleanupAfterSpeak(resolve);
+        doResolve();
       }, TTS_TIMEOUT_MS);
 
       try {
@@ -184,23 +131,23 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
           pitch: 1.05,
           onDone: () => {
             console.log("[TTS] onDone fired");
-            cleanupAfterSpeak(resolve);
+            doResolve();
           },
           onStopped: () => {
             console.log("[TTS] onStopped fired");
-            cleanupAfterSpeak(resolve);
+            doResolve();
           },
           onError: (err: any) => {
             console.warn("[TTS] onError fired:", err);
-            cleanupAfterSpeak(resolve);
+            doResolve();
           },
         });
       } catch (e: any) {
         console.warn("[TTS] speak error:", e.message);
-        cleanupAfterSpeak(resolve);
+        doResolve();
       }
     });
-  }, [cleanupAfterSpeak]);
+  }, []);
 
   const stop = useCallback(() => {
     if (timeoutRef.current) {
@@ -216,8 +163,6 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       resolveRef.current();
       resolveRef.current = null;
     }
-    // Fire and forget — reset audio session
-    deactivateAudioSession();
   }, []);
 
   return { isSpeaking, speak, stop };

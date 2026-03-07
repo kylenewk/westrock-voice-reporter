@@ -9,13 +9,13 @@ let _speechModule: any = null;
 let _loadAttempted = false;
 let _loadError: string | null = null;
 
-function getSpeechModule(): { module: any; error: string | null } {
-  if (_loadAttempted) return { module: _speechModule, error: _loadError };
+function getSpeechModule(): { srModule: any; error: string | null } {
+  if (_loadAttempted) return { srModule: _speechModule, error: _loadError };
   _loadAttempted = true;
   try {
     const mod = require("expo-speech-recognition");
     if (mod?.ExpoSpeechRecognitionModule) {
-      _speechModule = mod;
+      _speechModule = mod.ExpoSpeechRecognitionModule;
       console.log("[VoiceRecognition] Module loaded successfully");
     } else {
       _loadError = "Speech recognition module loaded but ExpoSpeechRecognitionModule is missing";
@@ -25,7 +25,7 @@ function getSpeechModule(): { module: any; error: string | null } {
     _loadError = e.message || "Failed to load speech recognition";
     console.warn("[VoiceRecognition] Load failed:", _loadError);
   }
-  return { module: _speechModule, error: _loadError };
+  return { srModule: _speechModule, error: _loadError };
 }
 
 interface UseVoiceRecognitionReturn {
@@ -84,15 +84,14 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       console.log("[VoiceRecognition] startListening called");
 
       // Lazy-load the native module on first actual use
-      const { module: mod, error: loadErr } = getSpeechModule();
-      if (!mod) {
+      const { srModule, error: loadErr } = getSpeechModule();
+      if (!srModule) {
         const errMsg = loadErr || "Speech recognition not available. Requires a native build.";
         console.error("[VoiceRecognition] Module not available:", errMsg);
         setError(errMsg);
         return;
       }
 
-      const srModule = mod.ExpoSpeechRecognitionModule;
       setTranscript("");
       setError(null);
       hasSpokenRef.current = false;
@@ -113,58 +112,55 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       });
       eventSubsRef.current = [];
 
-      // Set up event listeners via the library's addListener API
-      if (mod.addSpeechRecognitionListener) {
-        console.log("[VoiceRecognition] Setting up event listeners");
+      // Set up event listeners using the native module's addListener API
+      // (ExpoSpeechRecognitionModule extends NativeModule which provides addListener)
+      console.log("[VoiceRecognition] Setting up event listeners via srModule.addListener");
 
-        eventSubsRef.current.push(
-          mod.addSpeechRecognitionListener("start", () => {
-            console.log("[VoiceRecognition] EVENT: start — recognition active");
-            setIsListening(true);
-            setError(null);
-            hasSpokenRef.current = false;
-          })
-        );
+      eventSubsRef.current.push(
+        srModule.addListener("start", () => {
+          console.log("[VoiceRecognition] EVENT: start — recognition active");
+          setIsListening(true);
+          setError(null);
+          hasSpokenRef.current = false;
+        })
+      );
 
-        eventSubsRef.current.push(
-          mod.addSpeechRecognitionListener("end", () => {
-            console.log("[VoiceRecognition] EVENT: end — recognition stopped");
-            setIsListening(false);
-            clearSilenceTimer();
-          })
-        );
+      eventSubsRef.current.push(
+        srModule.addListener("end", () => {
+          console.log("[VoiceRecognition] EVENT: end — recognition stopped");
+          setIsListening(false);
+          clearSilenceTimer();
+        })
+      );
 
-        eventSubsRef.current.push(
-          mod.addSpeechRecognitionListener("result", (event: any) => {
-            if (event.results && event.results.length > 0) {
-              const text = event.results[0]?.transcript ?? "";
-              const isFinal = event.results[0]?.isFinal ?? false;
-              console.log("[VoiceRecognition] EVENT: result —", isFinal ? "FINAL:" : "interim:", text.substring(0, 50));
-              setTranscript(text);
-              if (text.trim().length > 0) {
-                hasSpokenRef.current = true;
-                resetSilenceTimer();
-              }
+      eventSubsRef.current.push(
+        srModule.addListener("result", (event: any) => {
+          if (event.results && event.results.length > 0) {
+            const text = event.results[0]?.transcript ?? "";
+            const isFinal = event.isFinal ?? false;
+            console.log("[VoiceRecognition] EVENT: result —", isFinal ? "FINAL:" : "interim:", text.substring(0, 50));
+            setTranscript(text);
+            if (text.trim().length > 0) {
+              hasSpokenRef.current = true;
+              resetSilenceTimer();
             }
-          })
-        );
+          }
+        })
+      );
 
-        eventSubsRef.current.push(
-          mod.addSpeechRecognitionListener("error", (event: any) => {
-            const errMsg = event.error || event.message || "Speech recognition error";
-            console.error("[VoiceRecognition] EVENT: error —", JSON.stringify(event));
-            setError(errMsg);
-            setIsListening(false);
-            clearSilenceTimer();
-          })
-        );
-      } else {
-        console.warn("[VoiceRecognition] addSpeechRecognitionListener not available — events won't fire");
-        setError("Speech recognition event system not available");
-        return;
-      }
+      eventSubsRef.current.push(
+        srModule.addListener("error", (event: any) => {
+          const errMsg = event.error || event.message || "Speech recognition error";
+          console.error("[VoiceRecognition] EVENT: error —", JSON.stringify(event));
+          setError(errMsg);
+          setIsListening(false);
+          clearSilenceTimer();
+        })
+      );
 
-      // Start recognition — let expo-speech-recognition manage its own audio session
+      // Start recognition
+      // expo-speech-recognition automatically sets iOS audio session to
+      // playAndRecord (which ignores the mute switch and supports mic input)
       console.log("[VoiceRecognition] Calling srModule.start()");
       srModule.start({
         lang: "en-US",
@@ -182,9 +178,9 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
   const stopListening = useCallback(async () => {
     clearSilenceTimer();
     try {
-      if (_speechModule?.ExpoSpeechRecognitionModule) {
+      if (_speechModule) {
         console.log("[VoiceRecognition] Stopping recognition");
-        _speechModule.ExpoSpeechRecognitionModule.stop();
+        _speechModule.stop();
       }
       setIsListening(false);
     } catch (e: any) {

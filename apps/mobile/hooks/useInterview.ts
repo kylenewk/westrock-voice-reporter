@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { Platform } from "react-native";
 import { useVoiceRecognition } from "./useVoiceRecognition";
 import { useTextToSpeech } from "./useTextToSpeech";
 import * as api from "../services/api";
@@ -8,6 +9,39 @@ import type {
   DealContext,
   StructuredReport,
 } from "../types";
+
+/**
+ * Configure the iOS audio session for the interview using
+ * expo-speech-recognition's own setCategoryIOS().
+ *
+ * This sets playAndRecord which:
+ * 1. Ignores the physical mute switch (TTS plays even on silent)
+ * 2. Supports mic input (speech recognition works)
+ *
+ * We use expo-speech-recognition's API instead of expo-av to avoid
+ * conflicts between the two modules fighting over the audio session.
+ */
+async function configureAudioSessionForInterview(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const mod = require("expo-speech-recognition");
+    const srModule = mod?.ExpoSpeechRecognitionModule;
+    if (!srModule?.setCategoryIOS) {
+      console.warn("[Interview] setCategoryIOS not available");
+      return;
+    }
+    // Import constants for audio session configuration
+    const constants = mod;
+    srModule.setCategoryIOS({
+      category: "playAndRecord",
+      categoryOptions: ["defaultToSpeaker", "allowBluetooth"],
+      mode: "spokenAudio",
+    });
+    console.log("[Interview] Audio session set to playAndRecord via expo-speech-recognition");
+  } catch (e: any) {
+    console.warn("[Interview] Failed to configure audio session:", e.message);
+  }
+}
 
 interface UseInterviewReturn {
   state: InterviewState;
@@ -134,6 +168,11 @@ export function useInterview(): UseInterviewReturn {
         setMessages([]);
         setReport(null);
         setState("greeting");
+
+        // Configure audio session ONCE for the entire interview
+        // This sets playAndRecord + playsInSilentModeIOS so both
+        // TTS and speech recognition work without conflicts
+        await configureAudioSessionForInterview();
 
         const result = await api.startInterview(dealId);
         sessionIdRef.current = result.sessionId;
