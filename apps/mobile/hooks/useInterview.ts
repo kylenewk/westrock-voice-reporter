@@ -51,8 +51,10 @@ export function useInterview(): UseInterviewReturn {
   );
 
   const startListeningPhase = useCallback(async () => {
+    console.log("[Interview] Transitioning to listening phase");
     setState("listening");
     await voice.startListening();
+    console.log("[Interview] voice.startListening() completed");
   }, [voice]);
 
   // Called when silence detected or user taps "Done"
@@ -141,8 +143,10 @@ export function useInterview(): UseInterviewReturn {
         addMessage("assistant", result.greeting);
 
         // Speak greeting, then start listening
+        console.log("[Interview] Speaking greeting...");
         setState("responding");
         await tts.speak(result.greeting);
+        console.log("[Interview] Greeting TTS finished, starting listening phase");
         await startListeningPhase();
       } catch (e: any) {
         setError(e.message || "Failed to start interview");

@@ -4,6 +4,9 @@ import { Platform } from "react-native";
 // Preferred voice names in order of naturalness
 const PREFERRED_NAMES = ["Ava", "Zoe", "Samantha", "Allison", "Nicky"];
 
+// Safety timeout — if TTS onDone/onStopped never fires, auto-resolve
+const TTS_TIMEOUT_MS = 30000;
+
 // Lazy-loaded — NOT imported at module evaluation time to avoid crash on launch
 let _speechLib: any = null;
 let _speechLoadAttempted = false;
@@ -34,29 +37,42 @@ function getAvLib(): any {
 
 /**
  * Configure the iOS audio session so TTS plays even when the
- * physical mute/silent switch is on. This is the #1 reason
- * "I see text but hear no voice" on iOS devices.
- *
- * We call this every time before TTS speaks because speech
- * recognition may have changed the audio session category
- * to "record" mode, which blocks TTS output.
+ * physical mute/silent switch is on.
  */
-async function ensureAudioSession(): Promise<void> {
+async function activateAudioForTTS(): Promise<void> {
   if (Platform.OS !== "ios") return;
   try {
     const av = getAvLib();
-    if (!av?.Audio) {
-      console.warn("[TTS] expo-av Audio not available, skipping audio session config");
-      return;
-    }
+    if (!av?.Audio) return;
     await av.Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
-      allowsRecordingIOS: true, // Must stay true — interview needs mic for speech recognition after TTS
+      allowsRecordingIOS: false,
       staysActiveInBackground: false,
     });
-    console.log("[TTS] Audio session configured (playsInSilentMode + recording enabled)");
+    console.log("[TTS] Audio session activated for playback");
   } catch (e: any) {
-    console.warn("[TTS] Failed to configure audio session:", e.message);
+    console.warn("[TTS] Failed to activate audio session:", e.message);
+  }
+}
+
+/**
+ * Reset audio session to defaults after TTS finishes, so
+ * expo-speech-recognition can configure its own AVAudioEngine
+ * session without conflicts.
+ */
+async function deactivateAudioSession(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const av = getAvLib();
+    if (!av?.Audio) return;
+    await av.Audio.setAudioModeAsync({
+      playsInSilentModeIOS: false,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+    });
+    console.log("[TTS] Audio session reset to defaults");
+  } catch (e: any) {
+    console.warn("[TTS] Failed to reset audio session:", e.message);
   }
 }
 
@@ -71,6 +87,7 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
   const resolveRef = useRef<(() => void) | null>(null);
   const selectedVoice = useRef<string | undefined>(undefined);
   const voiceInitRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize voice selection lazily — delayed so it doesn't block startup
   useEffect(() => {
@@ -124,6 +141,18 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
     return () => clearTimeout(timer);
   }, []);
 
+  const cleanupAfterSpeak = useCallback(async (resolve: () => void) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsSpeaking(false);
+    resolveRef.current = null;
+    // Reset audio session so speech recognition can use its own
+    await deactivateAudioSession();
+    resolve();
+  }, []);
+
   const speak = useCallback(async (text: string): Promise<void> => {
     const Speech = getSpeechLib();
     if (!Speech) {
@@ -131,45 +160,53 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       return;
     }
 
-    // Ensure audio session is configured so TTS plays even in silent mode
-    await ensureAudioSession();
+    // Activate audio session for TTS playback (plays in silent mode)
+    await activateAudioForTTS();
 
     return new Promise<void>((resolve) => {
       resolveRef.current = resolve;
       setIsSpeaking(true);
 
+      // Safety timeout — if onDone/onStopped never fires, force-resolve
+      // so the interview flow continues to listening phase
+      timeoutRef.current = setTimeout(() => {
+        console.warn("[TTS] Timeout — forcing resolve after", TTS_TIMEOUT_MS, "ms");
+        try { Speech.stop(); } catch {}
+        cleanupAfterSpeak(resolve);
+      }, TTS_TIMEOUT_MS);
+
       try {
+        console.log("[TTS] Speaking:", text.substring(0, 80) + (text.length > 80 ? "..." : ""));
         Speech.speak(text, {
           language: "en-US",
           voice: selectedVoice.current,
           rate: 1.1,
           pitch: 1.05,
           onDone: () => {
-            setIsSpeaking(false);
-            resolveRef.current = null;
-            resolve();
+            console.log("[TTS] onDone fired");
+            cleanupAfterSpeak(resolve);
           },
           onStopped: () => {
-            setIsSpeaking(false);
-            resolveRef.current = null;
-            resolve();
+            console.log("[TTS] onStopped fired");
+            cleanupAfterSpeak(resolve);
           },
-          onError: () => {
-            setIsSpeaking(false);
-            resolveRef.current = null;
-            resolve();
+          onError: (err: any) => {
+            console.warn("[TTS] onError fired:", err);
+            cleanupAfterSpeak(resolve);
           },
         });
       } catch (e: any) {
         console.warn("[TTS] speak error:", e.message);
-        setIsSpeaking(false);
-        resolveRef.current = null;
-        resolve();
+        cleanupAfterSpeak(resolve);
       }
     });
-  }, []);
+  }, [cleanupAfterSpeak]);
 
   const stop = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     try {
       const Speech = getSpeechLib();
       if (Speech) Speech.stop();
@@ -179,6 +216,8 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       resolveRef.current();
       resolveRef.current = null;
     }
+    // Fire and forget — reset audio session
+    deactivateAudioSession();
   }, []);
 
   return { isSpeaking, speak, stop };
