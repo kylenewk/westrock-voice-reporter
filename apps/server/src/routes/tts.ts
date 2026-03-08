@@ -27,7 +27,8 @@ export async function ttsRoutes(app: FastifyInstance) {
         .send(audioBuffer);
     } catch (err: any) {
       request.log.error(err, "TTS synthesis failed");
-      reply.code(500).send({ error: "TTS synthesis failed" });
+      const detail = err.status ? `${err.status}: ${err.message}` : err.message;
+      reply.code(500).send({ error: "TTS synthesis failed", detail });
     }
   });
 }
