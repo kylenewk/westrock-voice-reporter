@@ -1,9 +1,33 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { Platform } from "react-native";
 import { Audio } from "expo-av";
 import * as api from "../services/api";
 
 // Safety timeout — if audio never finishes, auto-resolve
 const TTS_TIMEOUT_MS = 30000;
+
+/**
+ * Reconfigure the iOS audio session for playback before each TTS call.
+ * Speech recognition can change the audio session state when it starts/stops,
+ * so we need to reset it to playAndRecord before each playback attempt.
+ */
+async function ensureAudioSessionForPlayback(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const mod = require("expo-speech-recognition");
+    const srModule = mod?.ExpoSpeechRecognitionModule;
+    if (srModule?.setCategoryIOS) {
+      srModule.setCategoryIOS({
+        category: "playAndRecord",
+        categoryOptions: ["defaultToSpeaker", "allowBluetooth"],
+        mode: "spokenAudio",
+      });
+      console.log("[TTS] Audio session reconfigured for playback");
+    }
+  } catch (e: any) {
+    console.warn("[TTS] Failed to reconfigure audio session:", e.message);
+  }
+}
 
 // Lazy-loaded expo-speech as fallback for offline/error scenarios
 let _speechLib: any = null;
@@ -136,6 +160,10 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
             "[TTS] Requesting cloud TTS:",
             text.substring(0, 80) + (text.length > 80 ? "..." : "")
           );
+
+          // 0. Ensure audio session is configured for playback
+          //    (speech recognition may have changed it)
+          await ensureAudioSessionForPlayback();
 
           // 1. Fetch audio from server (OpenAI nova voice)
           const audioUri = await api.synthesizeSpeech(text);
