@@ -6,6 +6,7 @@ import { authRoutes } from "./routes/auth.js";
 import { dealsRoutes } from "./routes/deals.js";
 import { interviewRoutes } from "./routes/interview.js";
 import { reportRoutes } from "./routes/report.js";
+import { ttsRoutes } from "./routes/tts.js";
 import { createTokenStore } from "./services/tokenStore.js";
 
 async function main() {
@@ -44,6 +45,7 @@ async function main() {
   await app.register(dealsRoutes);
   await app.register(interviewRoutes);
   await app.register(reportRoutes);
+  await app.register(ttsRoutes);
 
   // Health check
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));

@@ -7,6 +7,12 @@ export const config = {
     model: "claude-haiku-4-5-20251001" as const,
   },
 
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || "",
+    ttsModel: "tts-1" as const,
+    ttsVoice: "nova" as const,
+  },
+
   hubspot: {
     accessToken: process.env.HUBSPOT_ACCESS_TOKEN || "",
     defaultOwnerId: process.env.HUBSPOT_OWNER_ID || "211824246",
@@ -38,6 +44,11 @@ export const config = {
 export function validateConfig(): void {
   if (!config.anthropic.apiKey) {
     throw new Error("ANTHROPIC_API_KEY environment variable is required");
+  }
+  if (!config.openai.apiKey) {
+    console.warn(
+      "WARNING: OPENAI_API_KEY not set. Cloud TTS will not work (will fall back to native speech)."
+    );
   }
   if (!config.hubspot.accessToken && !config.hubspot.clientId) {
     console.warn(

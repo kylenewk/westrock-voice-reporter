@@ -1,13 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Platform } from "react-native";
+import { Audio } from "expo-av";
+import * as api from "../services/api";
 
-// Preferred voice names in order of naturalness
-const PREFERRED_NAMES = ["Ava", "Zoe", "Samantha", "Allison", "Nicky"];
-
-// Safety timeout — if TTS onDone/onStopped never fires, auto-resolve
+// Safety timeout — if audio never finishes, auto-resolve
 const TTS_TIMEOUT_MS = 30000;
 
-// Lazy-loaded — NOT imported at module evaluation time to avoid crash on launch
+// Lazy-loaded expo-speech as fallback for offline/error scenarios
 let _speechLib: any = null;
 let _speechLoadAttempted = false;
 
@@ -17,7 +15,7 @@ function getSpeechLib(): any {
   try {
     _speechLib = require("expo-speech");
   } catch (e: any) {
-    console.warn("[TTS] Failed to load expo-speech:", e.message);
+    console.warn("[TTS] Failed to load expo-speech fallback:", e.message);
   }
   return _speechLib;
 }
@@ -30,75 +28,54 @@ interface UseTextToSpeechReturn {
 
 export function useTextToSpeech(): UseTextToSpeechReturn {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
   const resolveRef = useRef<(() => void) | null>(null);
-  const selectedVoice = useRef<string | undefined>(undefined);
-  const voiceInitRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize voice selection lazily — delayed so it doesn't block startup
+  // Cleanup on unmount
   useEffect(() => {
-    if (Platform.OS !== "ios" || voiceInitRef.current) return;
-    voiceInitRef.current = true;
-
-    const timer = setTimeout(() => {
-      try {
-        const Speech = getSpeechLib();
-        if (!Speech) return;
-
-        Speech.getAvailableVoicesAsync()
-          .then((voices: any[]) => {
-            const enUS = voices.filter(
-              (v: any) => v.language === "en-US" || v.identifier?.includes("en-US")
-            );
-
-            const scored = enUS.map((v: any) => {
-              const id = v.identifier.toLowerCase();
-              const q = String(v.quality || "").toLowerCase();
-              let score = 0;
-
-              if (id.includes("premium") || q.includes("premium")) score += 1000;
-              else if (id.includes("enhanced") || q.includes("enhanced")) score += 500;
-              else if (id.includes("compact") && !id.includes("super-compact")) score += 100;
-              else if (id.includes("super-compact")) score += 10;
-
-              const nameIndex = PREFERRED_NAMES.findIndex((n) =>
-                id.includes(n.toLowerCase())
-              );
-              if (nameIndex >= 0) score += (PREFERRED_NAMES.length - nameIndex) * 10;
-
-              return { voice: v, score };
-            });
-
-            scored.sort((a: any, b: any) => b.score - a.score);
-
-            if (scored.length > 0) {
-              selectedVoice.current = scored[0].voice.identifier;
-              console.log(`[TTS] Selected: ${scored[0].voice.identifier} (score: ${scored[0].score})`);
-            }
-          })
-          .catch((err: any) => {
-            console.warn("[TTS] Failed to get voices:", err.message);
-          });
-      } catch (e: any) {
-        console.warn("[TTS] Voice init error:", e.message);
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync().catch(() => {});
+        soundRef.current = null;
       }
-    }, 1000);
-
-    return () => clearTimeout(timer);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, []);
 
-  const speak = useCallback(async (text: string): Promise<void> => {
-    const Speech = getSpeechLib();
-    if (!Speech) {
-      console.warn("[TTS] expo-speech not available, skipping");
-      return;
+  const cleanup = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
+    if (soundRef.current) {
+      soundRef.current.unloadAsync().catch(() => {});
+      soundRef.current = null;
+    }
+    setIsSpeaking(false);
+    if (resolveRef.current) {
+      resolveRef.current();
+      resolveRef.current = null;
+    }
+  }, []);
 
-    // NOTE: Audio session is configured once by useInterview before the
-    // interview starts. We do NOT touch the audio session here to avoid
-    // conflicts with expo-speech-recognition.
+  /**
+   * Fallback: use native expo-speech if cloud TTS fails (network error, etc.)
+   */
+  const speakFallback = useCallback(
+    (text: string, resolve: () => void): void => {
+      const Speech = getSpeechLib();
+      if (!Speech) {
+        console.warn("[TTS] Fallback expo-speech not available either");
+        setIsSpeaking(false);
+        resolve();
+        return;
+      }
+      console.log("[TTS] Falling back to native expo-speech");
 
-    return new Promise<void>((resolve) => {
       let resolved = false;
       const doResolve = () => {
         if (resolved) return;
@@ -113,57 +90,99 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
       };
 
       resolveRef.current = doResolve;
-      setIsSpeaking(true);
 
-      // Safety timeout — if onDone/onStopped never fires, force-resolve
       timeoutRef.current = setTimeout(() => {
-        console.warn("[TTS] Timeout — forcing resolve after", TTS_TIMEOUT_MS, "ms");
-        try { Speech.stop(); } catch {}
+        console.warn("[TTS] Fallback timeout");
+        try {
+          Speech.stop();
+        } catch {}
         doResolve();
       }, TTS_TIMEOUT_MS);
 
       try {
-        console.log("[TTS] Speaking:", text.substring(0, 80) + (text.length > 80 ? "..." : ""));
         Speech.speak(text, {
           language: "en-US",
-          voice: selectedVoice.current,
           rate: 1.1,
           pitch: 1.05,
-          onDone: () => {
-            console.log("[TTS] onDone fired");
-            doResolve();
-          },
-          onStopped: () => {
-            console.log("[TTS] onStopped fired");
-            doResolve();
-          },
-          onError: (err: any) => {
-            console.warn("[TTS] onError fired:", err);
-            doResolve();
-          },
+          onDone: doResolve,
+          onStopped: doResolve,
+          onError: () => doResolve(),
         });
-      } catch (e: any) {
-        console.warn("[TTS] speak error:", e.message);
+      } catch {
         doResolve();
       }
-    });
-  }, []);
+    },
+    []
+  );
+
+  const speak = useCallback(
+    async (text: string): Promise<void> => {
+      // NOTE: Audio session is configured once by useInterview before the
+      // interview starts. We do NOT touch the audio session here to avoid
+      // conflicts with expo-speech-recognition.
+
+      return new Promise<void>(async (resolve) => {
+        setIsSpeaking(true);
+        resolveRef.current = resolve;
+
+        // Safety timeout
+        timeoutRef.current = setTimeout(() => {
+          console.warn("[TTS] Timeout — forcing resolve after", TTS_TIMEOUT_MS, "ms");
+          cleanup();
+        }, TTS_TIMEOUT_MS);
+
+        try {
+          console.log(
+            "[TTS] Requesting cloud TTS:",
+            text.substring(0, 80) + (text.length > 80 ? "..." : "")
+          );
+
+          // 1. Fetch audio from server (OpenAI nova voice)
+          const audioUri = await api.synthesizeSpeech(text);
+
+          // 2. Create and play sound via expo-av
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: audioUri },
+            { shouldPlay: true }
+          );
+          soundRef.current = sound;
+
+          // 3. Listen for playback completion
+          sound.setOnPlaybackStatusUpdate((status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              console.log("[TTS] Cloud audio playback finished");
+              cleanup();
+            }
+          });
+
+          console.log("[TTS] Cloud audio playing (nova voice)");
+        } catch (err: any) {
+          console.warn("[TTS] Cloud TTS failed:", err.message);
+          // Clear the timeout set for cloud TTS; fallback manages its own
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+          // Fall back to native iOS speech
+          speakFallback(text, resolve);
+        }
+      });
+    },
+    [cleanup, speakFallback]
+  );
 
   const stop = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
+    // Stop expo-av playback
+    if (soundRef.current) {
+      soundRef.current.stopAsync().catch(() => {});
     }
+    // Also stop expo-speech in case fallback is active
     try {
       const Speech = getSpeechLib();
       if (Speech) Speech.stop();
     } catch {}
-    setIsSpeaking(false);
-    if (resolveRef.current) {
-      resolveRef.current();
-      resolveRef.current = null;
-    }
-  }, []);
+    cleanup();
+  }, [cleanup]);
 
   return { isSpeaking, speak, stop };
 }

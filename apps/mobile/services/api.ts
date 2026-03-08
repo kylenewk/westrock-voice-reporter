@@ -101,6 +101,48 @@ export async function generateReport(
   });
 }
 
+// TTS — returns base64 audio data URI for playback via expo-av
+export async function synthesizeSpeech(text: string): Promise<string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/tts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ text }),
+  });
+
+  if (response.status === 401) {
+    clearAuthToken();
+    throw new Error("Authentication expired. Please log in again.");
+  }
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`TTS API error ${response.status}: ${body}`);
+  }
+
+  // Convert response to a base64 data URI that expo-av can play
+  const arrayBuffer = await response.arrayBuffer();
+  const base64 = _arrayBufferToBase64(arrayBuffer);
+  return `data:audio/mpeg;base64,${base64}`;
+}
+
+function _arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 export async function uploadReport(
   dealId: string,
   report: StructuredReport,
