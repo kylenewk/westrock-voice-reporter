@@ -10,7 +10,7 @@ export function buildReportGeneratorPrompt(deal: DealContext): string {
 - Current Stage: ${deal.dealStage}
 
 ## WESTROCK PRODUCT CATEGORIES (use these exact labels when categorizing)
-- Roasted Coffee (whole bean, ground, single-serve)
+- Roasted Coffee (whole bean, ground, Keurig-compatible pods)
 - Iced Tea
 - Coffee Extract
 - Tea Extract

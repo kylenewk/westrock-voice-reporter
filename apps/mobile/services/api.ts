@@ -9,10 +9,15 @@ import type {
   UploadResult,
 } from "../types";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  options?: RequestInit & { timeoutMs?: number }
+): Promise<T> {
+  const { timeoutMs = 30000, ...fetchOptions } = options || {};
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options?.headers as Record<string, string>),
+    ...(fetchOptions?.headers as Record<string, string>),
   };
 
   // Attach auth token if available
@@ -21,21 +26,38 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  // Use AbortController for timeout — prevents "Network request failed"
+  // on long-running requests like report generation
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (response.status === 401) {
-    clearAuthToken();
-    throw new Error("Authentication expired. Please log in again.");
-  }
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`API error ${response.status}: ${body}`);
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error("Authentication expired. Please log in again.");
+    }
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`API error ${response.status}: ${body}`);
+    }
+    return response.json();
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error(
+        "Request timed out. The server may be busy — please try again."
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json();
 }
 
 // Auth
@@ -98,6 +120,7 @@ export async function generateReport(
   return request("/api/report/generate", {
     method: "POST",
     body: JSON.stringify({ sessionId }),
+    timeoutMs: 120000, // 2 minutes — report generation calls Claude API
   });
 }
 

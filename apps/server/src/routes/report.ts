@@ -5,9 +5,12 @@ import type { StructuredReport, UploadOptions } from "../types/report.js";
 
 export async function reportRoutes(app: FastifyInstance) {
   // Generate structured report from interview
+  // Longer timeout: Claude API call to generate the full report can take 30-60s
   app.post<{
     Body: { sessionId: string };
-  }>("/api/report/generate", async (request, reply) => {
+  }>("/api/report/generate", { config: { rawBody: false } }, async (request, reply) => {
+    // Extend timeout for this route — report generation is CPU-heavy on Claude's side
+    request.raw.setTimeout(120000);
     const { sessionId } = request.body;
     const report = await generateReport(sessionId);
     return { report };

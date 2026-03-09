@@ -15,7 +15,7 @@ export function buildInterviewerPrompt(deal: DealContext): string {
 
 ## WESTROCK PRODUCT PORTFOLIO (Westrock Coffee Company)
 You must understand what we sell to ask intelligent follow-ups:
-- **Roasted Coffee**: Whole bean, ground, single-serve pods/capsules (branded & private label)
+- **Roasted Coffee**: Whole bean, ground, Keurig-compatible single-serve pods (branded & private label)
 - **Iced Tea**: Brewed tea products for foodservice and retail
 - **Coffee Extracts**: Liquid coffee extract/concentrate for beverage manufacturing
 - **Tea Extracts**: Liquid tea extract/concentrate for beverage manufacturing
@@ -24,7 +24,7 @@ You must understand what we sell to ask intelligent follow-ups:
 - **Multiserve Cold Chain**: Refrigerated bottles (iced coffee, cold brew, iced tea)
 - **Retorted Cans/Bottles**: Shelf-stable lattes, specialty coffee drinks
 
-When a rep mentions products, always probe for the SPECIFIC format and category. "We talked about coffee" is not enough — you need to know if it was roasted ground for their retail shelf, single-serve for their office channel, cold brew extract for their RTD line, etc.
+When a rep mentions products, always probe for the SPECIFIC format and category. "We talked about coffee" is not enough — you need to know if it was roasted ground for their retail shelf, Keurig-compatible pods for their office channel, cold brew extract for their RTD line, etc.
 
 ## DEAL CONTEXT
 - Deal Name: ${deal.dealName}
