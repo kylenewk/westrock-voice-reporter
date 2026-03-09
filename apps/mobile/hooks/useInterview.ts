@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Platform } from "react-native";
+import { Platform, AppState, AppStateStatus } from "react-native";
 import { useVoiceRecognition } from "./useVoiceRecognition";
 import { useTextToSpeech } from "./useTextToSpeech";
 import * as api from "../services/api";
@@ -164,6 +164,52 @@ export function useInterview(): UseInterviewReturn {
       voice.onSilenceDetected.current = null;
     };
   }, [voice, state, finishSpeaking]);
+
+  // Handle app returning from background (e.g. phone sleep/lock).
+  // iOS kills the speech recognition session when the app is suspended.
+  // Without this, the dead recognizer causes a crash on resume.
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", async (nextState) => {
+      const wasBackground =
+        appStateRef.current === "background" || appStateRef.current === "inactive";
+      const isNowActive = nextState === "active";
+
+      if (wasBackground && isNowActive && sessionIdRef.current) {
+        console.log("[Interview] App resumed from background — recovering");
+
+        // 1. Stop any dead speech recognition session
+        try {
+          await voice.stopListening();
+        } catch {}
+
+        // 2. Reconfigure the audio session (it was likely invalidated)
+        await configureAudioSessionForInterview();
+
+        // 3. If we were listening, restart after a brief settle
+        if (
+          stateRef.current === "listening" ||
+          stateRef.current === "processing"
+        ) {
+          console.log("[Interview] Restarting listening after resume");
+          await new Promise((r) => setTimeout(r, 500));
+          try {
+            await startListeningPhase();
+          } catch (e: any) {
+            console.warn("[Interview] Failed to restart listening:", e.message);
+            setError("Voice recognition interrupted. Tap End Interview to save your progress.");
+          }
+        }
+      }
+
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [voice, startListeningPhase]);
 
   const startInterview = useCallback(
     async (dealId: string) => {

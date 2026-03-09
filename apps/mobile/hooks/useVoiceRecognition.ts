@@ -254,7 +254,13 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     try {
       if (_speechModule) {
         console.log("[VoiceRecognition] Stopping recognition");
-        _speechModule.stop();
+        try {
+          _speechModule.stop();
+        } catch (stopErr: any) {
+          // Swallow errors from stopping a dead/already-stopped session
+          // (common after app resumes from background)
+          console.warn("[VoiceRecognition] stop() threw (safe to ignore):", stopErr.message);
+        }
       }
       setIsListening(false);
     } catch (e: any) {
