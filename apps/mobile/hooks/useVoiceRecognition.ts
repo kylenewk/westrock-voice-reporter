@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
 // How long to wait after the user stops talking before auto-submitting (ms)
-const SILENCE_TIMEOUT_MS = 1200;
+// 2500ms gives enough time for natural thinking pauses without feeling sluggish
+const SILENCE_TIMEOUT_MS = 2500;
 
 // Retry config for starting speech recognition
 const MAX_START_RETRIES = 3;
