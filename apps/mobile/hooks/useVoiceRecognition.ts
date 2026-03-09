@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
 // How long to wait after the user stops talking before auto-submitting (ms)
 // 2500ms gives enough time for natural thinking pauses without feeling sluggish
@@ -87,6 +88,17 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       });
       eventSubsRef.current = [];
     };
+  }, [clearSilenceTimer]);
+
+  // When app goes to background, kill the silence timer so it doesn't
+  // fire during the sleep→resume recovery window and cause a race condition.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState: AppStateStatus) => {
+      if (nextState === "background" || nextState === "inactive") {
+        clearSilenceTimer();
+      }
+    });
+    return () => subscription.remove();
   }, [clearSilenceTimer]);
 
   /** Remove all existing event subscriptions */

@@ -179,7 +179,7 @@ export function useInterview(): UseInterviewReturn {
       const isNowActive = nextState === "active";
 
       if (wasBackground && isNowActive && sessionIdRef.current) {
-        console.log("[Interview] App resumed from background — recovering");
+        console.log("[Interview] App resumed from background — recovering, state:", stateRef.current);
 
         // 1. Stop any dead speech recognition session
         try {
@@ -189,11 +189,11 @@ export function useInterview(): UseInterviewReturn {
         // 2. Reconfigure the audio session (it was likely invalidated)
         await configureAudioSessionForInterview();
 
-        // 3. If we were listening, restart after a brief settle
-        if (
-          stateRef.current === "listening" ||
-          stateRef.current === "processing"
-        ) {
+        // 3. Recover based on what state we were in when sleep occurred
+        const currentState = stateRef.current;
+
+        if (currentState === "listening" || currentState === "processing") {
+          // Was listening/processing — restart speech recognition
           console.log("[Interview] Restarting listening after resume");
           await new Promise((r) => setTimeout(r, 500));
           try {
@@ -201,6 +201,23 @@ export function useInterview(): UseInterviewReturn {
           } catch (e: any) {
             console.warn("[Interview] Failed to restart listening:", e.message);
             setError("Voice recognition interrupted. Tap End Interview to save your progress.");
+          }
+        } else if (currentState === "responding" || currentState === "greeting") {
+          // TTS was playing — the useTextToSpeech hook already force-resolved
+          // the speak() promise on background, so the flow should continue.
+          // But if it got stuck, kick it back to listening as a safety net.
+          console.log("[Interview] Resuming from TTS state — waiting for flow to continue");
+          await new Promise((r) => setTimeout(r, 800));
+          // If we're still stuck in responding/greeting after the TTS hook
+          // should have resolved, force-transition to listening
+          if (stateRef.current === "responding" || stateRef.current === "greeting") {
+            console.warn("[Interview] Still stuck in", stateRef.current, "— forcing listen phase");
+            try {
+              await startListeningPhase();
+            } catch (e: any) {
+              console.warn("[Interview] Failed to restart listening:", e.message);
+              setError("Voice recognition interrupted. Tap End Interview to save your progress.");
+            }
           }
         }
       }

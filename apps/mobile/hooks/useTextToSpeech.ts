@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Platform } from "react-native";
+import { Platform, AppState, AppStateStatus } from "react-native";
 import { Audio } from "expo-av";
 import * as api from "../services/api";
 
@@ -68,6 +68,41 @@ export function useTextToSpeech(): UseTextToSpeechReturn {
         timeoutRef.current = null;
       }
     };
+  }, []);
+
+  // When the app goes to background (screen sleep / lock), iOS invalidates
+  // audio resources. Force-resolve the speak() promise so the interview
+  // flow doesn't get stuck in the "responding" state forever.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState: AppStateStatus) => {
+      if (nextState === "background" || nextState === "inactive") {
+        if (soundRef.current || resolveRef.current) {
+          console.log("[TTS] App backgrounding — force-stopping playback");
+          // Unload the sound object before iOS kills it
+          if (soundRef.current) {
+            try { soundRef.current.stopAsync().catch(() => {}); } catch {}
+            try { soundRef.current.unloadAsync().catch(() => {}); } catch {}
+            soundRef.current = null;
+          }
+          // Stop native fallback speech too
+          try {
+            const Speech = getSpeechLib();
+            if (Speech) Speech.stop();
+          } catch {}
+          // Clear timeout and resolve the pending promise
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+          setIsSpeaking(false);
+          if (resolveRef.current) {
+            resolveRef.current();
+            resolveRef.current = null;
+          }
+        }
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   const cleanup = useCallback(() => {
