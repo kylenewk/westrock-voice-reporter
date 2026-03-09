@@ -89,7 +89,7 @@ export function useInterview(): UseInterviewReturn {
     // Short delay to let the iOS audio session settle after TTS playback.
     // Without this, speech recognition can fail with "not available" because
     // the audio session is still transitioning from playback to recording.
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 300));
     setState("listening");
     await voice.startListening();
     console.log("[Interview] voice.startListening() completed");

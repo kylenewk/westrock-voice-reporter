@@ -21,7 +21,7 @@ export async function synthesizeSpeech(text: string): Promise<Buffer> {
     voice: config.openai.ttsVoice,
     input: text,
     response_format: "mp3",
-    speed: 1.0,
+    speed: 1.1,
   });
 
   const arrayBuffer = await response.arrayBuffer();
