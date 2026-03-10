@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
+import { useKeepAwake } from "expo-keep-awake";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { COLORS } from "../../constants/config";
 import { useInterview } from "../../hooks/useInterview";
@@ -111,6 +112,11 @@ const boundaryStyles = StyleSheet.create({
 });
 
 function InterviewContent() {
+  // Prevent the screen from sleeping during an interview.
+  // iOS kills native audio/speech modules when the screen goes dark,
+  // causing a hard crash. The screen should stay on while interviewing.
+  useKeepAwake();
+
   const { dealId } = useLocalSearchParams<{ dealId: string }>();
   const router = useRouter();
   const flatListRef = useRef<FlatList<InterviewMessage>>(null);
