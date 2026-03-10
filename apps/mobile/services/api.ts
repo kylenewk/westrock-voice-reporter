@@ -11,9 +11,9 @@ import type {
 
 async function request<T>(
   path: string,
-  options?: RequestInit & { timeoutMs?: number }
+  options?: RequestInit & { timeoutMs?: number; retries?: number }
 ): Promise<T> {
-  const { timeoutMs = 30000, ...fetchOptions } = options || {};
+  const { timeoutMs = 30000, retries = 0, ...fetchOptions } = options || {};
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -26,38 +26,68 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Use AbortController for timeout — prevents "Network request failed"
-  // on long-running requests like report generation
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    });
-
-    if (response.status === 401) {
-      clearAuthToken();
-      throw new Error("Authentication expired. Please log in again.");
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // Wait before retrying (1s, then 2s)
+      await new Promise((r) => setTimeout(r, attempt * 1000));
+      console.log(`[API] Retry ${attempt}/${retries} for ${path}`);
     }
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`API error ${response.status}: ${body}`);
+    // Use AbortController for timeout — prevents "Network request failed"
+    // on long-running requests like report generation
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...fetchOptions,
+        headers,
+        signal: controller.signal,
+      });
+
+      if (response.status === 401) {
+        clearAuthToken();
+        throw new Error("Authentication expired. Please log in again.");
+      }
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`API error ${response.status}: ${body}`);
+      }
+      return response.json();
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (err.name === "AbortError") {
+        throw new Error(
+          "Request timed out. The server may be busy — please try again."
+        );
+      }
+      // Auth errors should not be retried
+      if (err.message?.includes("Authentication expired")) {
+        throw err;
+      }
+      lastError = err;
+      // Only retry on network-level failures (not HTTP errors)
+      if (attempt < retries && isNetworkError(err)) {
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    return response.json();
-  } catch (err: any) {
-    if (err.name === "AbortError") {
-      throw new Error(
-        "Request timed out. The server may be busy — please try again."
-      );
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastError || new Error("Request failed");
+}
+
+function isNetworkError(err: any): boolean {
+  const msg = err?.message?.toLowerCase() || "";
+  return (
+    msg.includes("network request failed") ||
+    msg.includes("network error") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("load failed")
+  );
 }
 
 // Auth
@@ -121,6 +151,7 @@ export async function generateReport(
     method: "POST",
     body: JSON.stringify({ sessionId }),
     timeoutMs: 120000, // 2 minutes — report generation calls Claude API
+    retries: 2, // Retry on network failures (e.g. after phone sleep)
   });
 }
 
@@ -179,5 +210,7 @@ export async function uploadReport(
   return request("/api/report/upload", {
     method: "POST",
     body: JSON.stringify({ dealId, report, options }),
+    timeoutMs: 60000, // HubSpot upload can involve multiple API calls
+    retries: 2,
   });
 }

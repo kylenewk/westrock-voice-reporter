@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.westrockcoffee.voicereporter",
-      "buildNumber": "39",
+      "buildNumber": "40",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Voice Reporter uses speech recognition to transcribe your call reports.",
         "NSMicrophoneUsageDescription": "Voice Reporter needs microphone access to listen to your verbal reports.",

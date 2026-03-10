@@ -86,10 +86,10 @@ export function useInterview(): UseInterviewReturn {
 
   const startListeningPhase = useCallback(async () => {
     console.log("[Interview] Transitioning to listening phase");
-    // Short delay to let the iOS audio session settle after TTS playback.
-    // Without this, speech recognition can fail with "not available" because
-    // the audio session is still transitioning from playback to recording.
-    await new Promise((r) => setTimeout(r, 300));
+    // Brief delay to let the iOS audio session settle after TTS playback.
+    // The retry logic in useVoiceRecognition handles any remaining transition
+    // issues, so this can be kept short for snappier pacing.
+    await new Promise((r) => setTimeout(r, 100));
     setState("listening");
     await voice.startListening();
     console.log("[Interview] voice.startListening() completed");

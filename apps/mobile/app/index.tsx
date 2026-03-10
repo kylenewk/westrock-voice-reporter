@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Keyboard,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { COLORS } from "../constants/config";
@@ -19,6 +20,7 @@ export default function HomeScreen() {
 
   const handleSearch = () => {
     if (query.trim()) {
+      Keyboard.dismiss();
       search(query.trim());
     }
   };
@@ -65,6 +67,8 @@ export default function HomeScreen() {
         data={deals}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.dealCard}
