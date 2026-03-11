@@ -47,7 +47,7 @@ async function request<T>(
       });
 
       if (response.status === 401) {
-        clearAuthToken();
+        await clearAuthToken();
         throw new Error("Authentication expired. Please log in again.");
       }
 
@@ -55,7 +55,7 @@ async function request<T>(
         const body = await response.text();
         throw new Error(`API error ${response.status}: ${body}`);
       }
-      return response.json();
+      return await response.json();
     } catch (err: any) {
       clearTimeout(timer);
       if (err.name === "AbortError") {
@@ -97,16 +97,18 @@ export async function getAuthStatus(): Promise<{ authenticated: boolean; portalI
 
 export async function logout(): Promise<void> {
   await request("/api/auth/logout", { method: "POST" });
-  clearAuthToken();
+  await clearAuthToken();
 }
 
 // Deals
 export async function searchDeals(
   query: string,
-  ownerId?: string
+  ownerId?: string,
+  offset?: number
 ): Promise<{ deals: DealSummary[]; total: number }> {
   const params = new URLSearchParams({ q: query });
   if (ownerId) params.append("ownerId", ownerId);
+  if (offset) params.append("offset", String(offset));
   return request(`/api/deals?${params}`);
 }
 
@@ -156,6 +158,8 @@ export async function generateReport(
 }
 
 // TTS — returns base64 audio data URI for playback via expo-av
+const TTS_FETCH_TIMEOUT_MS = 15000;
+
 export async function synthesizeSpeech(text: string): Promise<string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -166,35 +170,51 @@ export async function synthesizeSpeech(text: string): Promise<string> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/tts`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ text }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TTS_FETCH_TIMEOUT_MS);
 
-  if (response.status === 401) {
-    clearAuthToken();
-    throw new Error("Authentication expired. Please log in again.");
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text }),
+      signal: controller.signal,
+    });
+
+    if (response.status === 401) {
+      await clearAuthToken();
+      throw new Error("Authentication expired. Please log in again.");
+    }
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`TTS API error ${response.status}: ${body}`);
+    }
+
+    // Convert response to a base64 data URI that expo-av can play
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = _arrayBufferToBase64(arrayBuffer);
+    return `data:audio/mpeg;base64,${base64}`;
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error("TTS request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`TTS API error ${response.status}: ${body}`);
-  }
-
-  // Convert response to a base64 data URI that expo-av can play
-  const arrayBuffer = await response.arrayBuffer();
-  const base64 = _arrayBufferToBase64(arrayBuffer);
-  return `data:audio/mpeg;base64,${base64}`;
 }
 
 function _arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = "";
   const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  // Process in chunks to avoid call stack overflow with String.fromCharCode
+  const CHUNK_SIZE = 8192;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, i + CHUNK_SIZE);
+    parts.push(String.fromCharCode(...chunk));
   }
-  return btoa(binary);
+  return btoa(parts.join(""));
 }
 
 export async function uploadReport(

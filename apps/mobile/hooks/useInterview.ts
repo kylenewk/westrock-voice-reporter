@@ -43,6 +43,28 @@ async function configureAudioSessionForInterview(): Promise<void> {
   }
 }
 
+/**
+ * Restore the iOS audio session to its default state after the interview ends.
+ * This re-enables the silent switch so other audio respects it.
+ */
+async function restoreAudioSession(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const mod = require("expo-speech-recognition");
+    const srModule = mod?.ExpoSpeechRecognitionModule;
+    if (srModule?.setCategoryIOS) {
+      srModule.setCategoryIOS({
+        category: "soloAmbient",
+        categoryOptions: [],
+        mode: "default",
+      });
+      console.log("[Interview] Audio session restored to soloAmbient");
+    }
+  } catch (e: any) {
+    console.warn("[Interview] Failed to restore audio session:", e.message);
+  }
+}
+
 interface UseInterviewReturn {
   state: InterviewState;
   messages: InterviewMessage[];
@@ -269,6 +291,8 @@ export function useInterview(): UseInterviewReturn {
       if (sessionIdRef.current) {
         await api.endInterview(sessionIdRef.current);
       }
+      // Restore audio session so silent switch works again
+      await restoreAudioSession();
       setState("summarizing");
     } catch (e: any) {
       setError(e.message || "Failed to end interview");

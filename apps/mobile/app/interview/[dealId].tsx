@@ -128,6 +128,7 @@ function InterviewContent() {
     error,
     voiceError,
     sessionId,
+    report,
     startInterview,
     finishSpeaking,
     endInterview,
@@ -136,6 +137,16 @@ function InterviewContent() {
 
   // Combine errors — show voice errors alongside interview errors
   const displayError = error || voiceError;
+
+  // Auto-clear errors after 8 seconds so stale messages don't persist
+  const [errorVisible, setErrorVisible] = React.useState(true);
+  React.useEffect(() => {
+    if (displayError) {
+      setErrorVisible(true);
+      const timer = setTimeout(() => setErrorVisible(false), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [displayError]);
 
   // Start interview on mount
   useEffect(() => {
@@ -153,12 +164,19 @@ function InterviewContent() {
     }
   }, [messages.length]);
 
-  // Navigate to report when complete
+  // Navigate to report when complete — pass the report JSON to avoid re-generating it
   useEffect(() => {
-    if (state === "complete") {
-      router.replace({ pathname: "/report/[dealId]", params: { dealId, sessionId: sessionId || "" } } as any);
+    if (state === "complete" && report) {
+      router.replace({
+        pathname: "/report/[dealId]",
+        params: {
+          dealId,
+          sessionId: sessionId || "",
+          reportJson: JSON.stringify(report),
+        },
+      } as any);
     }
-  }, [state]);
+  }, [state, report]);
 
   const handleEnd = () => {
     Alert.alert(
@@ -197,8 +215,8 @@ function InterviewContent() {
 
   return (
     <View style={styles.container}>
-      {/* Error Banner */}
-      {displayError && (
+      {/* Error Banner (auto-clears after 8s) */}
+      {displayError && errorVisible && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{displayError}</Text>
         </View>
@@ -208,7 +226,7 @@ function InterviewContent() {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(_, index) => String(index)}
+        keyExtractor={(item, index) => `${item.role}-${item.timestamp}-${index}`}
         contentContainerStyle={styles.transcriptContent}
         renderItem={({ item }) => <TranscriptBubble message={item} />}
         ListHeaderComponent={
@@ -237,7 +255,25 @@ function InterviewContent() {
         <VoiceOrb state={state} />
 
         <View style={styles.buttonRow}>
-          {(state === "listening" || state === "responding") && (
+          {state === "summarizing" && error && (
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => generateReport()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.endButtonText}>Retry Report</Text>
+            </TouchableOpacity>
+          )}
+          {state === "summarizing" && (
+            <TouchableOpacity
+              style={styles.endButton}
+              onPress={() => router.replace("/")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.endButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          )}
+          {(state === "listening" || state === "responding" || state === "processing" || state === "greeting") && (
             <TouchableOpacity
               style={styles.endButton}
               onPress={handleEnd}
@@ -326,6 +362,12 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.3)",
+  },
+  retryButton: {
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
   },
   endButtonText: {
     color: "rgba(255,255,255,0.8)",

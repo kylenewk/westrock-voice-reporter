@@ -2,8 +2,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { AppState, AppStateStatus } from "react-native";
 
 // How long to wait after the user stops talking before auto-submitting (ms)
-// 2500ms gives enough time for natural thinking pauses without feeling sluggish
-const SILENCE_TIMEOUT_MS = 2500;
+// 1800ms keeps the interview feeling snappy while still allowing brief pauses
+const SILENCE_TIMEOUT_MS = 1800;
 
 // Retry config for starting speech recognition
 const MAX_START_RETRIES = 3;

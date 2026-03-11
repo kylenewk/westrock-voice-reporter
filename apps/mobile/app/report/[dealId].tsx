@@ -14,18 +14,27 @@ import * as api from "../../services/api";
 import type { StructuredReport, UploadResult } from "../../types";
 
 export default function ReportScreen() {
-  const { dealId, sessionId } = useLocalSearchParams<{
+  const { dealId, sessionId, reportJson } = useLocalSearchParams<{
     dealId: string;
     sessionId?: string;
+    reportJson?: string;
   }>();
   const router = useRouter();
 
-  const [report, setReport] = useState<StructuredReport | null>(null);
+  const [report, setReport] = useState<StructuredReport | null>(() => {
+    // Use the report passed from the interview screen if available
+    if (reportJson) {
+      try {
+        return JSON.parse(reportJson) as StructuredReport;
+      } catch {}
+    }
+    return null;
+  });
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate report if we don't have one yet
+  // Only generate report if we don't already have one (e.g. navigated directly)
   useEffect(() => {
     if (!report && sessionId) {
       api
@@ -33,7 +42,7 @@ export default function ReportScreen() {
         .then((r) => setReport(r.report))
         .catch((err) => setError(err.message));
     }
-  }, [report, sessionId]);
+  }, []);
 
   const handleUpload = async () => {
     if (!report || !dealId) return;

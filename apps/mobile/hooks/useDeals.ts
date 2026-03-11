@@ -38,7 +38,7 @@ export function useDeals(): UseDealsReturn {
     if (deals.length >= total || loading) return;
     try {
       setLoading(true);
-      const result = await api.searchDeals(lastQuery);
+      const result = await api.searchDeals(lastQuery, undefined, deals.length);
       setDeals((prev) => [...prev, ...result.deals]);
     } catch (e: any) {
       setError(e.message || "Failed to load more deals");

@@ -12,9 +12,13 @@ export default function LoginScreen() {
     try {
       await login();
     } catch {
-      // User will be redirected back via deep link
+      // login() failed (e.g. no browser available) — reset so user can retry
+      setLoading(false);
+      return;
     }
-    // Don't set loading false — the app will navigate away on callback
+    // On success the app navigates away via deep link callback.
+    // Safety: reset loading after 10s in case the callback never fires.
+    setTimeout(() => setLoading(false), 10000);
   };
 
   return (
