@@ -142,58 +142,64 @@ export async function searchDeals(
 export async function getDeal(client: Client, dealId: string): Promise<DealDetail> {
   const deal = await client.crm.deals.basicApi.getById(dealId, DEAL_PROPERTIES);
 
-  // Fetch associated contacts via REST API
-  let contacts: HubSpotContact[] = [];
-  try {
-    const assocResponse = await client.apiRequest({
-      method: "GET",
-      path: `/crm/v3/objects/deals/${dealId}/associations/contacts`,
-    });
-    const assocData: any = await assocResponse.json();
-    if (assocData.results && assocData.results.length > 0) {
-      const contactIds = assocData.results.map((a: any) => a.toObjectId || a.id);
-      const contactsResponse = await client.crm.contacts.batchApi.read({
-        inputs: contactIds.map((id: string) => ({ id })),
-        properties: ["firstname", "lastname", "email", "jobtitle", "company"],
-        propertiesWithHistory: [],
-      });
-      contacts = (contactsResponse.results || []).map((c: any) => ({
-        id: c.id,
-        firstname: c.properties.firstname || null,
-        lastname: c.properties.lastname || null,
-        email: c.properties.email || null,
-        jobtitle: c.properties.jobtitle || null,
-        company: c.properties.company || null,
-      }));
-    }
-  } catch {
-    // Associations may not exist
-  }
-
-  // Fetch associated company via REST API
-  let company: HubSpotCompany | null = null;
-  try {
-    const compAssocResponse = await client.apiRequest({
-      method: "GET",
-      path: `/crm/v3/objects/deals/${dealId}/associations/companies`,
-    });
-    const compAssocData: any = await compAssocResponse.json();
-    if (compAssocData.results && compAssocData.results.length > 0) {
-      const compId = compAssocData.results[0].toObjectId || compAssocData.results[0].id;
-      const compResponse = await client.crm.companies.basicApi.getById(
-        compId,
-        ["name", "domain", "industry"]
-      );
-      company = {
-        id: compResponse.id,
-        name: compResponse.properties.name || null,
-        domain: compResponse.properties.domain || null,
-        industry: compResponse.properties.industry || null,
-      };
-    }
-  } catch {
-    // No associated company
-  }
+  // Fetch contacts and company associations in parallel
+  const [contacts, company] = await Promise.all([
+    // Fetch associated contacts
+    (async (): Promise<HubSpotContact[]> => {
+      try {
+        const assocResponse = await client.apiRequest({
+          method: "GET",
+          path: `/crm/v3/objects/deals/${dealId}/associations/contacts`,
+        });
+        const assocData: any = await assocResponse.json();
+        if (assocData.results && assocData.results.length > 0) {
+          const contactIds = assocData.results.map((a: any) => a.toObjectId || a.id);
+          const contactsResponse = await client.crm.contacts.batchApi.read({
+            inputs: contactIds.map((id: string) => ({ id })),
+            properties: ["firstname", "lastname", "email", "jobtitle", "company"],
+            propertiesWithHistory: [],
+          });
+          return (contactsResponse.results || []).map((c: any) => ({
+            id: c.id,
+            firstname: c.properties.firstname || null,
+            lastname: c.properties.lastname || null,
+            email: c.properties.email || null,
+            jobtitle: c.properties.jobtitle || null,
+            company: c.properties.company || null,
+          }));
+        }
+      } catch {
+        // Associations may not exist
+      }
+      return [];
+    })(),
+    // Fetch associated company
+    (async (): Promise<HubSpotCompany | null> => {
+      try {
+        const compAssocResponse = await client.apiRequest({
+          method: "GET",
+          path: `/crm/v3/objects/deals/${dealId}/associations/companies`,
+        });
+        const compAssocData: any = await compAssocResponse.json();
+        if (compAssocData.results && compAssocData.results.length > 0) {
+          const compId = compAssocData.results[0].toObjectId || compAssocData.results[0].id;
+          const compResponse = await client.crm.companies.basicApi.getById(
+            compId,
+            ["name", "domain", "industry"]
+          );
+          return {
+            id: compResponse.id,
+            name: compResponse.properties.name || null,
+            domain: compResponse.properties.domain || null,
+            industry: compResponse.properties.industry || null,
+          };
+        }
+      } catch {
+        // No associated company
+      }
+      return null;
+    })(),
+  ]);
 
   return { deal: { id: deal.id, properties: deal.properties as any }, contacts, company };
 }
@@ -231,60 +237,67 @@ export async function uploadReport(
     hubspotUrl: `https://app.hubspot.com/contacts/${portalId}/deal/${dealId}`,
   };
 
-  // 1. Create NOTE with HTML report
-  if (options.createNote) {
-    const noteBody = formatReportHtml(report);
-    const noteResponse = await client.crm.objects.notes.basicApi.create({
-      properties: {
-        hs_note_body: noteBody,
-        hs_timestamp: new Date().toISOString(),
-        hubspot_owner_id: ownerId,
-      } as any,
-      associations: [
-        {
-          to: { id: dealId },
-          types: [
-            {
-              associationCategory: "HUBSPOT_DEFINED" as any,
-              associationTypeId: 214, // note_to_deal
-            },
-          ],
-        },
-      ],
-    } as any);
-    result.noteId = noteResponse.id;
-  }
+  // 1 & 2. Create NOTE and log CALL in parallel (independent operations)
+  const [noteResult, callResult] = await Promise.all([
+    options.createNote
+      ? (async () => {
+          const noteBody = formatReportHtml(report);
+          const noteResponse = await client.crm.objects.notes.basicApi.create({
+            properties: {
+              hs_note_body: noteBody,
+              hs_timestamp: new Date().toISOString(),
+              hubspot_owner_id: ownerId,
+            } as any,
+            associations: [
+              {
+                to: { id: dealId },
+                types: [
+                  {
+                    associationCategory: "HUBSPOT_DEFINED" as any,
+                    associationTypeId: 214, // note_to_deal
+                  },
+                ],
+              },
+            ],
+          } as any);
+          return noteResponse.id;
+        })()
+      : Promise.resolve(undefined),
+    options.logCall
+      ? (async () => {
+          const callBody = formatReportPlainText(report);
+          const customerName = report.attendees.find(
+            (a) => !a.company?.toLowerCase().includes("westrock")
+          )?.company || "Customer";
 
-  // 2. Log CALL activity
-  if (options.logCall) {
-    const callBody = formatReportPlainText(report);
-    const customerName = report.attendees.find(
-      (a) => !a.company?.toLowerCase().includes("westrock")
-    )?.company || "Customer";
+          const callResponse = await client.crm.objects.calls.basicApi.create({
+            properties: {
+              hs_call_title: `Call Report: ${customerName} - ${report.callDate}`,
+              hs_call_body: callBody,
+              hs_call_direction: "OUTBOUND",
+              hs_call_status: "COMPLETED",
+              hs_timestamp: new Date().toISOString(),
+              hubspot_owner_id: ownerId,
+            } as any,
+            associations: [
+              {
+                to: { id: dealId },
+                types: [
+                  {
+                    associationCategory: "HUBSPOT_DEFINED" as any,
+                    associationTypeId: 206, // call_to_deal
+                  },
+                ],
+              },
+            ],
+          } as any);
+          return callResponse.id;
+        })()
+      : Promise.resolve(undefined),
+  ]);
 
-    const callResponse = await client.crm.objects.calls.basicApi.create({
-      properties: {
-        hs_call_title: `Call Report: ${customerName} - ${report.callDate}`,
-        hs_call_body: callBody,
-        hs_call_direction: "OUTBOUND",
-        hs_call_status: "COMPLETED",
-        hs_timestamp: new Date().toISOString(),
-        hubspot_owner_id: ownerId,
-      } as any,
-      associations: [
-        {
-          to: { id: dealId },
-          types: [
-            {
-              associationCategory: "HUBSPOT_DEFINED" as any,
-              associationTypeId: 206, // call_to_deal
-            },
-          ],
-        },
-      ],
-    } as any);
-    result.callId = callResponse.id;
-  }
+  if (noteResult) result.noteId = noteResult;
+  if (callResult) result.callId = callResult;
 
   // 3. Update deal properties
   if (options.updateDeal && options.dealUpdates) {

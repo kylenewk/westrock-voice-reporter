@@ -127,7 +127,15 @@ export async function dealsRoutes(app: FastifyInstance) {
       return getMockDealDetail(request.params.id);
     }
 
-    const detail = await getDeal(request.hubspotClient, request.params.id);
-    return detail;
+    try {
+      const detail = await getDeal(request.hubspotClient, request.params.id);
+      return detail;
+    } catch (err: any) {
+      request.log.error({ err, dealId: request.params.id }, "Failed to fetch deal");
+      const status = err?.code === 404 || err?.statusCode === 404 ? 404 : 502;
+      reply.code(status).send({
+        error: `Failed to fetch deal: ${err.message}`,
+      });
+    }
   });
 }
