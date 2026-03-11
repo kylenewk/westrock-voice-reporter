@@ -12,29 +12,38 @@ export interface SessionStore {
 
 class MemorySessionStore implements SessionStore {
   private sessions = new Map<string, InterviewSession>();
+  private lastAccess = new Map<string, number>();
   private cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor(ttlMs: number) {
     this.cleanupInterval = setInterval(() => {
       const now = Date.now();
-      for (const [id, session] of this.sessions) {
-        if (now - new Date(session.createdAt).getTime() > ttlMs) {
+      for (const [id] of this.sessions) {
+        const lastUsed = this.lastAccess.get(id) || 0;
+        if (now - lastUsed > ttlMs) {
           this.sessions.delete(id);
+          this.lastAccess.delete(id);
         }
       }
     }, 60_000);
   }
 
   async get(id: string) {
-    return this.sessions.get(id);
+    const session = this.sessions.get(id);
+    if (session) {
+      this.lastAccess.set(id, Date.now());
+    }
+    return session;
   }
 
   async set(id: string, session: InterviewSession) {
     this.sessions.set(id, session);
+    this.lastAccess.set(id, Date.now());
   }
 
   async delete(id: string) {
     this.sessions.delete(id);
+    this.lastAccess.delete(id);
   }
 }
 

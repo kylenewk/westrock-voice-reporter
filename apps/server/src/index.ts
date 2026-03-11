@@ -8,12 +8,14 @@ import { interviewRoutes } from "./routes/interview.js";
 import { reportRoutes } from "./routes/report.js";
 import { ttsRoutes } from "./routes/tts.js";
 import { createTokenStore } from "./services/tokenStore.js";
+import { rateLimit } from "./middleware/rateLimit.js";
 
 async function main() {
   validateConfig();
 
   const app = Fastify({
     logger: true,
+    bodyLimit: 1_048_576, // 1 MB — prevents oversized payloads
   });
 
   // CORS for mobile app
@@ -37,6 +39,9 @@ async function main() {
   // Create token store for OAuth tokens
   const tokenStore = createTokenStore();
 
+  // Rate limiting for expensive endpoints
+  await app.register(rateLimit);
+
   // Auth middleware — resolves per-request HubSpot client
   await app.register(authPlugin(tokenStore));
 
@@ -49,6 +54,15 @@ async function main() {
 
   // Health check
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    console.log(`${signal} received — shutting down gracefully`);
+    await app.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   // Start server
   await app.listen({ port: config.port, host: config.host });

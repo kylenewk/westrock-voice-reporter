@@ -6,6 +6,7 @@ import {
   sendMessage,
   streamMessage,
   getTranscript,
+  markSessionCompleted,
 } from "../services/claude.js";
 import { getDeal, buildDealContext } from "../services/hubspot.js";
 import { getMockDealDetail } from "./deals.js";
@@ -15,39 +16,70 @@ export async function interviewRoutes(app: FastifyInstance) {
   app.post<{
     Body: { dealId: string };
   }>("/api/interview/start", async (request, reply) => {
-    const { dealId } = request.body;
+    const { dealId } = request.body || {};
+    if (!dealId || typeof dealId !== "string") {
+      reply.code(400).send({ error: "dealId is required" });
+      return;
+    }
 
-    // Fetch deal context (from HubSpot or mock data)
-    const dealDetail = request.hubspotClient
-      ? await getDeal(request.hubspotClient, dealId)
-      : getMockDealDetail(dealId);
-    const dealContext = buildDealContext(dealDetail);
+    try {
+      // Fetch deal context (from HubSpot or mock data)
+      const dealDetail = request.hubspotClient
+        ? await getDeal(request.hubspotClient, dealId)
+        : getMockDealDetail(dealId);
+      const dealContext = buildDealContext(dealDetail);
 
-    // Create session
-    const session = await startSession(dealId, dealContext);
-    const greeting = await getGreeting(session);
+      // Create session
+      const session = await startSession(dealId, dealContext);
+      const greeting = await getGreeting(session);
 
-    return {
-      sessionId: session.id,
-      greeting,
-      dealContext,
-    };
+      return {
+        sessionId: session.id,
+        greeting,
+        dealContext,
+      };
+    } catch (err: any) {
+      request.log.error(err, "Failed to start interview");
+      reply.code(500).send({ error: "Failed to start interview", detail: err.message });
+    }
   });
 
   // Send a message (non-streaming)
   app.post<{
     Body: { sessionId: string; transcript: string };
   }>("/api/interview/message", async (request, reply) => {
-    const { sessionId, transcript } = request.body;
-    const result = await sendMessage(sessionId, transcript);
-    return result;
+    const { sessionId, transcript } = request.body || {};
+    if (!sessionId || typeof sessionId !== "string") {
+      reply.code(400).send({ error: "sessionId is required" });
+      return;
+    }
+    if (!transcript || typeof transcript !== "string" || !transcript.trim()) {
+      reply.code(400).send({ error: "transcript is required" });
+      return;
+    }
+
+    try {
+      const result = await sendMessage(sessionId, transcript);
+      return result;
+    } catch (err: any) {
+      if (err.message?.includes("not found")) {
+        reply.code(404).send({ error: err.message });
+        return;
+      }
+      request.log.error(err, "Failed to process interview message");
+      reply.code(500).send({ error: "Failed to process message", detail: err.message });
+    }
   });
 
   // Send a message (SSE streaming)
   app.post<{
     Body: { sessionId: string; transcript: string };
   }>("/api/interview/message/stream", async (request, reply) => {
-    const { sessionId, transcript } = request.body;
+    const { sessionId, transcript } = request.body || {};
+    if (!sessionId || !transcript) {
+      reply.code(400).send({ error: "sessionId and transcript are required" });
+      return;
+    }
 
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -55,17 +87,26 @@ export async function interviewRoutes(app: FastifyInstance) {
       Connection: "keep-alive",
     });
 
+    // Abort the Claude stream if the client disconnects
+    let aborted = false;
+    request.raw.on("close", () => {
+      aborted = true;
+    });
+
     try {
       for await (const chunk of streamMessage(sessionId, transcript)) {
+        if (aborted) break;
         const data = JSON.stringify(chunk);
         reply.raw.write(`data: ${data}\n\n`);
       }
     } catch (error: any) {
-      const errData = JSON.stringify({
-        type: "error",
-        content: error.message || "Unknown error",
-      });
-      reply.raw.write(`data: ${errData}\n\n`);
+      if (!aborted) {
+        const errData = JSON.stringify({
+          type: "error",
+          content: error.message || "Unknown error",
+        });
+        reply.raw.write(`data: ${errData}\n\n`);
+      }
     }
 
     reply.raw.end();
@@ -75,13 +116,23 @@ export async function interviewRoutes(app: FastifyInstance) {
   app.post<{
     Body: { sessionId: string };
   }>("/api/interview/end", async (request, reply) => {
-    const { sessionId } = request.body;
-    const session = await getSession(sessionId);
-    if (!session) {
-      reply.code(404);
-      return { error: "Session not found" };
+    const { sessionId } = request.body || {};
+    if (!sessionId || typeof sessionId !== "string") {
+      reply.code(400).send({ error: "sessionId is required" });
+      return;
     }
-    session.completed = true;
-    return { transcript: await getTranscript(sessionId) };
+
+    try {
+      const session = await getSession(sessionId);
+      if (!session) {
+        reply.code(404).send({ error: "Session not found" });
+        return;
+      }
+      await markSessionCompleted(sessionId);
+      return { transcript: await getTranscript(sessionId) };
+    } catch (err: any) {
+      request.log.error(err, "Failed to end interview");
+      reply.code(500).send({ error: "Failed to end interview", detail: err.message });
+    }
   });
 }

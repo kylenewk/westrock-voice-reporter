@@ -10,6 +10,20 @@ import { v4 as uuidv4 } from "uuid";
 const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 const store: SessionStore = createSessionStore();
 
+// Phrases that signal the AI interviewer considers the interview complete
+const COMPLETION_SIGNALS = [
+  "i think i have everything i need",
+  "let me put together your report",
+  "i have all the information i need",
+  "that covers everything",
+  "let me summarize",
+];
+
+function isInterviewComplete(text: string): boolean {
+  const lower = text.toLowerCase();
+  return COMPLETION_SIGNALS.some((signal) => lower.includes(signal));
+}
+
 export async function startSession(dealId: string, dealContext: DealContext): Promise<InterviewSession> {
   const session: InterviewSession = {
     id: uuidv4(),
@@ -25,6 +39,14 @@ export async function startSession(dealId: string, dealContext: DealContext): Pr
 
 export async function getSession(sessionId: string): Promise<InterviewSession | undefined> {
   return store.get(sessionId);
+}
+
+export async function markSessionCompleted(sessionId: string): Promise<void> {
+  const session = await store.get(sessionId);
+  if (session) {
+    session.completed = true;
+    await store.set(sessionId, session);
+  }
 }
 
 export async function getGreeting(session: InterviewSession): Promise<string> {
@@ -47,6 +69,10 @@ export async function sendMessage(
     throw new Error(`Session ${sessionId} not found`);
   }
 
+  if (session.completed) {
+    return { response: "This interview has already been completed.", interviewComplete: true };
+  }
+
   // Add user message
   session.messages.push({
     role: "user",
@@ -61,12 +87,15 @@ export async function sendMessage(
     content: m.content,
   }));
 
-  const response = await client.messages.create({
-    model: config.anthropic.model,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: apiMessages,
-  });
+  const response = await client.messages.create(
+    {
+      model: config.anthropic.model,
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: apiMessages,
+    },
+    { timeout: 30000 }
+  );
 
   // Extract text response
   const textBlock = response.content.find((b) => b.type === "text");
@@ -80,11 +109,7 @@ export async function sendMessage(
   });
 
   // Check for completion signal
-  const interviewComplete = assistantText.toLowerCase().includes(
-    "i think i have everything i need"
-  ) || assistantText.toLowerCase().includes(
-    "let me put together your report"
-  );
+  const interviewComplete = isInterviewComplete(assistantText);
 
   if (interviewComplete) {
     session.completed = true;
@@ -146,9 +171,7 @@ export async function* streamMessage(
     timestamp: new Date().toISOString(),
   });
 
-  const interviewComplete =
-    fullResponse.toLowerCase().includes("i think i have everything i need") ||
-    fullResponse.toLowerCase().includes("let me put together your report");
+  const interviewComplete = isInterviewComplete(fullResponse);
 
   if (interviewComplete) {
     session.completed = true;
@@ -175,31 +198,48 @@ export async function generateReport(sessionId: string): Promise<StructuredRepor
     })
     .join("\n\n");
 
-  const response = await client.messages.create({
-    model: config.anthropic.model,
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: [
-      {
-        role: "user",
-        content: `Generate a structured call report from this interview transcript:\n\n${transcript}`,
-      },
-    ],
-  });
+  // Retry report generation up to 2 times (JSON parsing can fail on malformed output)
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await client.messages.create(
+        {
+          model: config.anthropic.model,
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: [
+            {
+              role: "user",
+              content: `Generate a structured call report from this interview transcript:\n\n${transcript}`,
+            },
+          ],
+        },
+        { timeout: 90000 }
+      );
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text response from Claude");
+      const textBlock = response.content.find((b) => b.type === "text");
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("No text response from Claude");
+      }
+
+      // Parse JSON from response - handle possible markdown wrapping
+      let jsonText = textBlock.text.trim();
+      if (jsonText.startsWith("```")) {
+        jsonText = jsonText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+      }
+
+      const report: StructuredReport = JSON.parse(jsonText);
+      return report;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt === 0 && err instanceof SyntaxError) {
+        console.warn("[Claude] Report JSON parse failed, retrying...");
+        continue;
+      }
+      throw err;
+    }
   }
-
-  // Parse JSON from response - handle possible markdown wrapping
-  let jsonText = textBlock.text.trim();
-  if (jsonText.startsWith("```")) {
-    jsonText = jsonText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-  }
-
-  const report: StructuredReport = JSON.parse(jsonText);
-  return report;
+  throw lastError || new Error("Report generation failed");
 }
 
 export async function getTranscript(sessionId: string): Promise<InterviewMessage[]> {
