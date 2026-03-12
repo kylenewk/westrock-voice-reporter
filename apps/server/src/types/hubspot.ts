@@ -37,8 +37,23 @@ export interface HubSpotCompany {
   industry: string | null;
 }
 
+export interface HubSpotNote {
+  id: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface HubSpotCall {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface DealDetail {
   deal: HubSpotDeal;
   contacts: HubSpotContact[];
   company: HubSpotCompany | null;
+  notes: HubSpotNote[];
+  calls: HubSpotCall[];
 }
