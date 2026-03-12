@@ -1,13 +1,15 @@
 import { DealContext } from "../types/interview.js";
 
 export function buildReportGeneratorPrompt(deal: DealContext): string {
+  const historyContext = buildHistoryContext(deal);
+
   return `You are a report generator for Westrock Coffee Company sales call reports. Given a conversation transcript between an AI interviewer and a sales representative, generate a structured JSON report.
 
 ## DEAL CONTEXT
 - Deal Name: ${deal.dealName}
 - Customer Brand: ${deal.customerName || "Unknown"}
 - Pipeline: ${deal.pipeline}
-- Current Stage: ${deal.dealStage}
+- Current Stage: ${deal.dealStage}${deal.companyName ? `\n- Company: ${deal.companyName}` : ""}${deal.companyIndustry ? `\n- Industry: ${deal.companyIndustry}` : ""}
 
 ## WESTROCK PRODUCT CATEGORIES (use these exact labels when categorizing)
 - Roasted Coffee (whole bean, ground, Keurig-compatible pods)
@@ -18,7 +20,7 @@ export function buildReportGeneratorPrompt(deal: DealContext): string {
 - RTD Cans (ready-to-drink shelf-stable)
 - Multiserve Cold Chain (refrigerated bottles)
 - Retorted Cans/Bottles (shelf-stable lattes, specialty)
-
+${historyContext}
 ## OUTPUT FORMAT
 Return ONLY valid JSON matching this exact schema — no markdown, no explanation, just the JSON object:
 
@@ -81,4 +83,22 @@ Return ONLY valid JSON matching this exact schema — no markdown, no explanatio
 - If no stage change was discussed, set recommendedStage to the same as currentStage
 - For callDate, use today's date if not explicitly mentioned: ${new Date().toISOString().split("T")[0]}
 - For businessType: "competitive switch" means replacing an incumbent supplier, "expansion" means growing an existing Westrock account, "new" means a brand new customer relationship`;
+}
+
+function buildHistoryContext(deal: DealContext): string {
+  if (!deal.previousNotes || deal.previousNotes.length === 0) return "";
+
+  const historyLines = deal.previousNotes
+    .map((n) => `[${n.date}] ${n.content}`)
+    .join("\n\n");
+
+  return `
+## PREVIOUS ENGAGEMENT HISTORY
+Reference this history when generating the report. Use it to:
+- Note when action items from previous reports have been completed or are still outstanding
+- Identify how the deal has progressed compared to previous interactions
+- Capture any changes in competitive landscape, pricing, or customer sentiment over time
+
+${historyLines}
+`;
 }

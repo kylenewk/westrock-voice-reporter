@@ -62,6 +62,7 @@ export function getMockDealDetail(dealId: string): DealDetail {
         incumbent_supplier: "Competitor Coffee Co.",
         next_step: "Schedule follow-up call",
         probability_of_closing: "60",
+        description: "Multi-year coffee supply agreement for hotel chain beverage program.",
       },
     },
     contacts: [
@@ -73,6 +74,14 @@ export function getMockDealDetail(dealId: string): DealDetail {
         jobtitle: "Procurement Manager",
         company: deal?.customer_name || "Test Customer",
       },
+      {
+        id: "contact-002",
+        firstname: "Tom",
+        lastname: "Rivera",
+        email: "tom.rivera@example.com",
+        jobtitle: "VP Food & Beverage",
+        company: deal?.customer_name || "Test Customer",
+      },
     ],
     company: {
       id: "company-001",
@@ -80,6 +89,26 @@ export function getMockDealDetail(dealId: string): DealDetail {
       domain: "example.com",
       industry: "Food & Beverage",
     },
+    notes: [
+      {
+        id: "note-001",
+        body: "Met with Jane Smith and Tom Rivera at their corporate office. Discussed switching from Competitor Coffee Co. due to inconsistent quality on their dark roast blend. They are interested in our Roasted Coffee line — specifically ground coffee for in-room brewing and Keurig-compatible pods for their lobby cafe. Volume estimate: ~75,000 lbs/year across 120 properties. Jane requested 3 sample SKUs for internal tasting. Decision timeline: Q2 2026. Key concern: supply chain reliability during peak season.",
+        createdAt: "2026-02-20T14:30:00Z",
+      },
+      {
+        id: "note-002",
+        body: "Sent roasted coffee samples (Colombian Medium Roast ground, House Blend K-Cups, Dark Roast ground) to Jane Smith via FedEx. Tracking number shared. Expected delivery: Feb 28. Tom Rivera mentioned they are also evaluating Folgers and Farmer Brothers. Need to follow up on tasting results by mid-March.",
+        createdAt: "2026-02-26T10:00:00Z",
+      },
+    ],
+    calls: [
+      {
+        id: "call-001",
+        title: "Call Report: Initial Discovery Call",
+        body: "30-minute intro call with Jane Smith. She outlined their current coffee program: 120 hotels, in-room ground coffee and lobby K-Cup stations. Current supplier is Competitor Coffee Co. on a 2-year contract expiring June 2026. Pain points: inconsistent roast quality, slow response to complaints, no sustainability certifications. Jane is the day-to-day contact; Tom Rivera (VP F&B) is the final decision maker. Budget: ~$2.10/lb for ground, open to premium for better quality. Next step: Schedule in-person meeting to present full product line.",
+        createdAt: "2026-02-10T16:00:00Z",
+      },
+    ],
   };
 }
 

@@ -5,8 +5,10 @@ import type {
   DealDetail,
   HubSpotContact,
   HubSpotCompany,
+  HubSpotNote,
+  HubSpotCall,
 } from "../types/hubspot.js";
-import type { DealContext } from "../types/interview.js";
+import type { DealContext, ContactSummary, NoteSummary } from "../types/interview.js";
 import type { StructuredReport, UploadOptions, UploadResult } from "../types/report.js";
 import { formatReportHtml, formatReportPlainText } from "./reportFormatter.js";
 
@@ -139,11 +141,27 @@ export async function searchDeals(
   }
 }
 
+/** Strip HTML tags from a string, returning plain text. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function getDeal(client: Client, dealId: string): Promise<DealDetail> {
   const deal = await client.crm.deals.basicApi.getById(dealId, DEAL_PROPERTIES);
 
-  // Fetch contacts and company associations in parallel
-  const [contacts, company] = await Promise.all([
+  // Fetch contacts, company, notes, and calls associations in parallel
+  const [contacts, company, notes, calls] = await Promise.all([
     // Fetch associated contacts
     (async (): Promise<HubSpotContact[]> => {
       try {
@@ -199,13 +217,124 @@ export async function getDeal(client: Client, dealId: string): Promise<DealDetai
       }
       return null;
     })(),
+    // Fetch associated notes
+    (async (): Promise<HubSpotNote[]> => {
+      try {
+        const assocResponse = await client.apiRequest({
+          method: "GET",
+          path: `/crm/v3/objects/deals/${dealId}/associations/notes`,
+        });
+        const assocData: any = await assocResponse.json();
+        if (assocData.results && assocData.results.length > 0) {
+          const noteIds = assocData.results
+            .map((a: any) => a.toObjectId || a.id)
+            .slice(0, 10); // Cap at 10 most recent
+          const notesResponse = await client.apiRequest({
+            method: "POST",
+            path: "/crm/v3/objects/notes/batch/read",
+            body: {
+              inputs: noteIds.map((id: string) => ({ id })),
+              properties: ["hs_note_body", "hs_timestamp"],
+            },
+          });
+          const notesData: any = await notesResponse.json();
+          return (notesData.results || [])
+            .map((n: any) => ({
+              id: n.id,
+              body: stripHtml(n.properties.hs_note_body || ""),
+              createdAt: n.properties.hs_timestamp || n.createdAt || "",
+            }))
+            .filter((n: HubSpotNote) => n.body.length > 0)
+            .sort((a: HubSpotNote, b: HubSpotNote) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+        }
+      } catch (err) {
+        console.log("[getDeal] Notes fetch skipped:", (err as any)?.message);
+      }
+      return [];
+    })(),
+    // Fetch associated calls
+    (async (): Promise<HubSpotCall[]> => {
+      try {
+        const assocResponse = await client.apiRequest({
+          method: "GET",
+          path: `/crm/v3/objects/deals/${dealId}/associations/calls`,
+        });
+        const assocData: any = await assocResponse.json();
+        if (assocData.results && assocData.results.length > 0) {
+          const callIds = assocData.results
+            .map((a: any) => a.toObjectId || a.id)
+            .slice(0, 10); // Cap at 10 most recent
+          const callsResponse = await client.apiRequest({
+            method: "POST",
+            path: "/crm/v3/objects/calls/batch/read",
+            body: {
+              inputs: callIds.map((id: string) => ({ id })),
+              properties: ["hs_call_title", "hs_call_body", "hs_timestamp"],
+            },
+          });
+          const callsData: any = await callsResponse.json();
+          return (callsData.results || [])
+            .map((c: any) => ({
+              id: c.id,
+              title: c.properties.hs_call_title || "",
+              body: c.properties.hs_call_body || "",
+              createdAt: c.properties.hs_timestamp || c.createdAt || "",
+            }))
+            .filter((c: HubSpotCall) => c.body.length > 0 || c.title.length > 0)
+            .sort((a: HubSpotCall, b: HubSpotCall) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+        }
+      } catch (err) {
+        console.log("[getDeal] Calls fetch skipped:", (err as any)?.message);
+      }
+      return [];
+    })(),
   ]);
 
-  return { deal: { id: deal.id, properties: deal.properties as any }, contacts, company };
+  return { deal: { id: deal.id, properties: deal.properties as any }, contacts, company, notes, calls };
+}
+
+/** Truncate a string to a max length, adding ellipsis if cut. */
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 3) + "...";
 }
 
 export function buildDealContext(detail: DealDetail): DealContext {
   const p = detail.deal.properties;
+
+  // Build contact summaries
+  const contacts: ContactSummary[] = detail.contacts.map((c) => ({
+    name: [c.firstname, c.lastname].filter(Boolean).join(" ") || "Unknown",
+    title: c.jobtitle || "",
+    email: c.email || "",
+  }));
+
+  // Merge notes and calls into a single timeline, sorted by date descending
+  const noteSummaries: NoteSummary[] = [];
+
+  for (const note of detail.notes || []) {
+    noteSummaries.push({
+      date: note.createdAt ? new Date(note.createdAt).toISOString().split("T")[0] : "",
+      content: truncate(note.body, 500),
+    });
+  }
+
+  for (const call of detail.calls || []) {
+    const prefix = call.title ? `${call.title}: ` : "Call: ";
+    noteSummaries.push({
+      date: call.createdAt ? new Date(call.createdAt).toISOString().split("T")[0] : "",
+      content: truncate(prefix + call.body, 500),
+    });
+  }
+
+  // Sort by date descending and cap at 10
+  noteSummaries.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
+  const previousNotes = noteSummaries.slice(0, 10);
+
   return {
     dealId: detail.deal.id,
     dealName: p.dealname || "Unknown Deal",
@@ -221,6 +350,11 @@ export function buildDealContext(detail: DealDetail): DealContext {
     incumbentSupplier: p.incumbent_supplier || "",
     lastUpdate: p.next_step || "",
     probabilityOfClosing: p.probability_of_closing || "",
+    description: p.description || "",
+    contacts,
+    companyName: detail.company?.name || "",
+    companyIndustry: detail.company?.industry || "",
+    previousNotes,
   };
 }
 

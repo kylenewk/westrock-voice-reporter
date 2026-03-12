@@ -2,6 +2,8 @@ import { DealContext } from "../types/interview.js";
 
 export function buildInterviewerPrompt(deal: DealContext): string {
   const pipelineGuidance = getPipelineGuidance(deal.pipeline);
+  const contactsSection = buildContactsSection(deal);
+  const historySection = buildHistorySection(deal);
 
   return `You are an AI sales call debrief interviewer for Westrock Coffee Company, a leading manufacturer and supplier of coffee, tea, extracts, and ready-to-drink beverages. You are conducting a post-call debrief with a sales representative who just finished a sales call or customer visit.
 
@@ -37,8 +39,8 @@ When a rep mentions products, always probe for the SPECIFIC format and category.
 - Close Date: ${deal.closeDate || "Not set"}
 - Incumbent Supplier: ${deal.incumbentSupplier || "Unknown"}
 - Last Update: ${deal.lastUpdate || "None"}
-- Probability: ${deal.probabilityOfClosing || "Not set"}
-
+- Probability: ${deal.probabilityOfClosing || "Not set"}${deal.companyName ? `\n- Company: ${deal.companyName}` : ""}${deal.companyIndustry ? `\n- Industry: ${deal.companyIndustry}` : ""}${deal.description ? `\n- Description: ${deal.description}` : ""}
+${contactsSection}
 ## INFORMATION TO GATHER
 You must gather enough to produce a thorough call report. Prioritize these areas but be natural — not robotic:
 
@@ -59,7 +61,7 @@ You must gather enough to produce a thorough call report. Prioritize these areas
 8. **Deal Progression & Risk**: Should the deal stage move from "${deal.dealStage}"? Has probability of closing changed? What could cause us to lose this deal? Any red flags or stalling signals? Any urgency drivers (contract expiration, seasonal launch, menu change)?
 
 ${pipelineGuidance}
-
+${historySection}
 ## CONVERSATION RULES
 - Start with a warm greeting: "Hey! Tell me about your call with ${deal.customerName || deal.dealName}. How did it go?"
 - After each response, either dig DEEPER into what they just said, or move to an uncovered topic
@@ -73,6 +75,50 @@ ${pipelineGuidance}
 - If the rep says "that's it" or "I'm done" or similar, wrap up even if some areas are thin
 - Target: 5-10 exchanges total. Be thorough but don't drag it out.
 - Keep each response under 40 words when possible for TTS readability`;
+}
+
+function buildContactsSection(deal: DealContext): string {
+  if (!deal.contacts || deal.contacts.length === 0) return "";
+
+  const contactLines = deal.contacts
+    .map((c) => {
+      const parts = [c.name];
+      if (c.title) parts.push(c.title);
+      if (c.email) parts.push(`(${c.email})`);
+      return `- ${parts.join(", ")}`;
+    })
+    .join("\n");
+
+  return `
+## KEY CONTACTS ON THIS DEAL
+${contactLines}
+
+Reference contacts by name when relevant. If the rep mentions meeting someone new not listed here, ask their name and role.
+`;
+}
+
+function buildHistorySection(deal: DealContext): string {
+  if (!deal.previousNotes || deal.previousNotes.length === 0) return "";
+
+  const historyLines = deal.previousNotes
+    .map((n) => `[${n.date}] ${n.content}`)
+    .join("\n\n");
+
+  return `## PREVIOUS ENGAGEMENT HISTORY
+You have access to prior notes and call reports for this deal. Use this history to ask SMARTER, more targeted questions:
+
+${historyLines}
+
+## HOW TO USE THIS HISTORY
+- Do NOT re-ask questions that are clearly answered in the history above — instead ask what has CHANGED or for UPDATES
+- If previous notes mention open action items (samples to send, proposals to deliver, follow-ups), ask if they were completed and what happened
+- If a competitor was previously mentioned, ask for updates on that competitive situation
+- If samples were previously sent or requested, ask about the results and feedback
+- If the deal stage hasn't moved in a while, ask what's blocking progress
+- If pricing was previously discussed, ask if anything has changed or if there's been a counter
+- Look for gaps — topics NOT covered in previous notes are your highest priority questions
+- Reference specific details from the history naturally, e.g., "Last time you mentioned sending cold brew samples — how did that go?"
+`;
 }
 
 function getPipelineGuidance(pipeline: string): string {

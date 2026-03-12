@@ -13,6 +13,17 @@ export interface InterviewSession {
   completed: boolean;
 }
 
+export interface ContactSummary {
+  name: string;
+  title: string;
+  email: string;
+}
+
+export interface NoteSummary {
+  date: string;
+  content: string;
+}
+
 export interface DealContext {
   dealId: string;
   dealName: string;
@@ -28,4 +39,9 @@ export interface DealContext {
   incumbentSupplier: string;
   lastUpdate: string;
   probabilityOfClosing: string;
+  description: string;
+  contacts: ContactSummary[];
+  companyName: string;
+  companyIndustry: string;
+  previousNotes: NoteSummary[];
 }
